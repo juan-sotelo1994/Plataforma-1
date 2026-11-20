@@ -1,0 +1,119 @@
+{% extends 'panel/base_panel.html' %}
+
+{% block title %}Resumen académico{% endblock %}
+
+{% block content %}
+
+<h1>Resumen académico</h1>
+
+<p>
+    Aquí puede ver sus <strong>notas</strong> por curso y calificar a cada docente.
+    Las notas en <strong>verde</strong> están aprobadas; las <strong>amarillas</strong> están por debajo de {{ nota_aprobatoria }}.
+</p>
+
+<p class="acciones-arbol">
+    <button type="button" class="enlace-accion" id="contraer-todo">Contraer todo</button>
+</p>
+
+<ul class="arbol">
+
+    <!-- Datos del estudiante -->
+    <li class="nodo">
+        <details open>
+            <summary>
+                <span class="estado ok" aria-hidden="true"></span>
+                Datos del estudiante
+            </summary>
+            <dl class="tabla-datos">
+                <div><dt>Nombres</dt><dd>{{ usuario.nombres }}</dd></div>
+                <div><dt>Apellidos</dt><dd>{{ usuario.apellidos }}</dd></div>
+                <div><dt>Documento</dt><dd>{{ usuario.documento }}</dd></div>
+                <div><dt>Código</dt><dd>{{ usuario.codigo }}</dd></div>
+                <div><dt>Programa</dt><dd>{{ usuario.programa or '—' }}</dd></div>
+                <div><dt>Jornada</dt><dd>{{ usuario.jornada or '—' }}</dd></div>
+            </dl>
+        </details>
+    </li>
+
+    <!-- Promedio general -->
+    <li class="nodo">
+        <details open>
+            <summary>
+                <span class="estado {{ 'pendiente' if promedio is none else ('ok' if promedio >= nota_aprobatoria else 'alerta') }}" aria-hidden="true"></span>
+                Promedio general
+            </summary>
+            <div class="detalle">
+                {% if promedio is none %}
+                <p class="vacio">Todavía no tiene notas registradas.</p>
+                {% else %}
+                <p>Promedio de {{ calificados }} curso(s) calificados: <strong>{{ '%.2f' % promedio }}</strong></p>
+                {% endif %}
+            </div>
+        </details>
+    </li>
+
+    <!-- Notas por curso -->
+    {% for curso in cursos %}
+    {% set estado = 'pendiente' if curso.nota is none else ('ok' if curso.nota >= nota_aprobatoria else 'alerta') %}
+    <li class="nodo">
+        <details open>
+            <summary>
+                <span class="estado {{ estado }}" aria-hidden="true"></span>
+                {{ curso.materia }} · grupo {{ curso.grupo }} · {{ curso.periodo }}
+                <span class="nota-resumen">{{ '%.1f' % curso.nota if curso.nota is not none else 'Sin calificar' }}</span>
+            </summary>
+            <dl class="tabla-datos">
+                <div><dt>Docente</dt><dd>{{ curso.docente }}</dd></div>
+                <div><dt>Jornada</dt><dd>{{ curso.jornada }}</dd></div>
+                <div><dt>Créditos</dt><dd>{{ curso.creditos }}</dd></div>
+                <div><dt>Nota</dt><dd>{{ '%.1f' % curso.nota if curso.nota is not none else 'Sin calificar' }}</dd></div>
+            </dl>
+
+            <!-- Calificación al docente -->
+            <div class="detalle evaluacion">
+                {% if curso.evaluacion %}
+                <p>Calificó al docente con <strong>{{ curso.evaluacion }} de 5</strong>. Gracias por su opinión.</p>
+                {% else %}
+                <h3 class="subtitulo-nodo">Calificar al docente</h3>
+                <form method="post" action="{{ url_for('dashboard.evaluar', curso_id=curso.curso_id) }}" class="form-evaluacion">
+                    <fieldset>
+                        <legend>¿Cómo califica al docente? (1 = muy bajo, 5 = excelente)</legend>
+                        <div class="escala">
+                            {% for n in range(1, 6) %}
+                            <label><input type="radio" name="puntuacion" value="{{ n }}" required> {{ n }}</label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+                    <label class="campo-comentario">
+                        <span>Comentario (opcional)</span>
+                        <textarea name="comentario" rows="3" maxlength="500"></textarea>
+                    </label>
+                    <button type="submit" class="boton-principal">Enviar calificación</button>
+                </form>
+                {% endif %}
+            </div>
+        </details>
+    </li>
+    {% else %}
+    <li class="nodo">
+        <div class="detalle">
+            <p class="vacio">No está matriculado en ningún curso todavía.</p>
+        </div>
+    </li>
+    {% endfor %}
+
+    <!-- Importante -->
+    <li class="nodo">
+        <details open>
+            <summary>
+                <span class="estado ok" aria-hidden="true"></span>
+                Importante
+            </summary>
+            <div class="detalle">
+                <p class="vacio">No hay mensajes importantes.</p>
+            </div>
+        </details>
+    </li>
+</ul>
+
+{% endblock %}

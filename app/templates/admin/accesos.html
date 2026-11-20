@@ -1,0 +1,91 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block title %}Accesos{% endblock %}
+
+{% block content %}
+
+<h1>Accesos de docentes y estudiantes</h1>
+<p>Cree una cuenta para que cada docente o estudiante entre con su correo y contraseña.</p>
+
+<section class="bloque-admin">
+    <h2 style="display:flex; align-items:center; gap:12px;">
+        Cuentas <span class="contador">({{ cuentas|length }})</span>
+        {% if personas %}
+        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-acceso" style="margin-left:auto;">
+            <i class="fa-solid fa-plus"></i> Nuevo acceso
+        </button>
+        {% endif %}
+    </h2>
+
+    {% if cuentas %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Persona</th>
+                    <th scope="col">Rol</th>
+                    <th scope="col">Correo</th>
+                    <th scope="col" class="col-acciones">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cuenta in cuentas %}
+                <tr>
+                    <td>{{ cuenta.persona }}</td>
+                    <td>{{ 'Docente' if cuenta.rol == 'docente' else 'Estudiante' }}</td>
+                    <td>{{ cuenta.correo }}</td>
+                    <td class="col-acciones">
+                        <form method="post" action="{{ url_for('admin.eliminar_acceso', cuenta_id=cuenta.id) }}"
+                              onsubmit="return confirm('¿Eliminar este acceso?');">
+                            <button type="submit" class="boton-admin boton-admin-peligro">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">Todavía no hay cuentas creadas.{% if not personas %} Primero registre docentes o estudiantes.{% endif %}</p>
+    {% endif %}
+</section>
+
+{% if personas %}
+<!-- Ventana para crear el acceso -->
+<dialog id="ventana-acceso" class="dialog" aria-labelledby="titulo-acceso">
+    <form method="post" action="{{ url_for('admin.accesos') }}">
+        <div class="dialog-head">
+            <h2 id="titulo-acceso"><i class="fa-solid fa-user-lock"></i>Nuevo acceso</h2>
+            <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="dialog-body">
+            <label class="form-field completo">
+                <span>Persona</span>
+                <select name="persona" required>
+                    <option value="">— Seleccione —</option>
+                    {% for valor, texto in personas %}
+                    <option value="{{ valor }}">{{ texto }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="form-field">
+                <span>Correo</span>
+                <input type="email" name="correo" placeholder="persona@correo.com" required>
+            </label>
+            <label class="form-field">
+                <span>Contraseña inicial</span>
+                <input type="password" name="contrasena" minlength="6" required>
+                <small class="ayuda">Mínimo 6 caracteres. La persona puede cambiarla después.</small>
+            </label>
+        </div>
+
+        <div class="dialog-foot">
+            <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
+            <button type="submit" class="boton-admin boton-admin-primario">Crear acceso</button>
+        </div>
+    </form>
+</dialog>
+{% endif %}
+
+{% endblock %}

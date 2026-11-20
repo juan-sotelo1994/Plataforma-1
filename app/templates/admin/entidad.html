@@ -1,0 +1,106 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block title %}{{ config.titulo }}{% endblock %}
+
+{% block content %}
+
+<h1>{{ config.titulo }}</h1>
+<p>{{ filas|length }} registro(s). Use el botón para crear uno nuevo.</p>
+
+<section class="bloque-admin">
+    <h2 style="display:flex; align-items:center; gap:12px;">
+        Registros <span class="contador">({{ filas|length }})</span>
+        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-crear" style="margin-left:auto;">
+            <i class="fa-solid fa-plus"></i> Nuevo {{ config.singular }}
+        </button>
+    </h2>
+
+    {% if filas %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    {% for etiqueta, _ in config.columnas %}<th scope="col">{{ etiqueta }}</th>{% endfor %}
+                    <th scope="col" class="col-acciones">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fila in filas %}
+                <tr>
+                    {% for _, clave in config.columnas %}<td>{{ fila[clave] if fila[clave] not in (None, '') else '—' }}</td>{% endfor %}
+                    <td class="col-acciones">
+                        <a href="{{ url_for('admin.editar', entidad=entidad, registro_id=fila['id']) }}" class="boton-admin" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-pen"></i> Editar</a>
+                        <form method="post" action="{{ url_for('admin.eliminar', entidad=entidad, registro_id=fila['id']) }}" style="display:inline;"
+                              onsubmit="return confirm('¿Eliminar este registro? Esta acción no se puede deshacer.');">
+                            <button type="submit" class="boton-admin boton-admin-peligro">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">Todavía no hay registros. Use el botón «Nuevo {{ config.singular }}» para crear el primero.</p>
+    {% endif %}
+</section>
+
+<!-- Ventana para crear el registro -->
+<dialog id="ventana-crear" class="dialog" aria-labelledby="titulo-crear">
+    <form method="post" action="{{ url_for('admin.entidad', entidad=entidad) }}" enctype="multipart/form-data">
+        <div class="dialog-head">
+            <h2 id="titulo-crear"><i class="fa-solid fa-square-plus"></i>Nuevo {{ config.singular }}</h2>
+            <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="dialog-body">
+            {% for campo in campos %}
+            <label class="form-field {{ 'completo' if campo.tipo == 'textarea' }}">
+                <span>{{ campo.etiqueta }}{% if not campo.requerido %} <small>(opcional)</small>{% endif %}</span>
+                {% if campo.tipo == 'select' %}
+                <select name="{{ campo.nombre }}" {% if campo.requerido %}required{% endif %}>
+                    <option value="">— Seleccione —</option>
+                    {% for valor, texto in campo.opciones %}
+                    <option value="{{ valor }}">{{ texto }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <input type="{{ 'number' if campo.tipo in ('number', 'decimal') else (campo.tipo or 'text') }}"
+                       name="{{ campo.nombre }}" placeholder="{{ campo.ejemplo or '' }}"
+                       {% if campo.tipo == 'number' %}min="0" step="1"{% endif %}
+                       {% if campo.tipo == 'decimal' %}min="{{ campo.minimo }}" max="{{ campo.maximo }}" step="0.1"{% endif %}
+                       {% if campo.requerido %}required{% endif %}>
+                {% endif %}
+                {% if campo.ayuda %}<small class="ayuda">{{ campo.ayuda }}</small>{% endif %}
+            </label>
+            {% endfor %}
+            {% if materias_opciones is not none %}
+            <div class="form-field completo">
+                <span>Materias que puede dictar</span>
+                {% if materias_opciones %}
+                <div class="checks">
+                    {% for valor, texto in materias_opciones %}
+                    <label class="check"><input type="checkbox" name="materias" value="{{ valor }}"> {{ texto }}</label>
+                    {% endfor %}
+                </div>
+                <small class="ayuda">Solo podrá asignarle cursos de estas materias.</small>
+                {% else %}
+                <small class="ayuda">Todavía no hay materias. Regístrelas primero en la sección Materias.</small>
+                {% endif %}
+            </div>
+
+            <label class="form-field completo">
+                <span>Hoja de vida <small>(opcional, .pdf o .doc, máximo 5 MB)</small></span>
+                <input type="file" name="hoja" accept=".pdf,.doc,application/pdf,application/msword">
+            </label>
+            {% endif %}
+        </div>
+
+        <div class="dialog-foot">
+            <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
+            <button type="submit" class="boton-admin boton-admin-primario">Guardar {{ config.singular }}</button>
+        </div>
+    </form>
+</dialog>
+
+{% endblock %}

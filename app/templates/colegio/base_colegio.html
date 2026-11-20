@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ empresa.nombre }}{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/colegio.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+
+    <!-- Barra superior: logo y enlaces secundarios -->
+    <div class="barra-superior">
+        <div class="fila-superior">
+            <a href="{{ url_for('web.inicio') }}" class="logo" aria-label="{{ empresa.nombre }} - inicio">
+                <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="40" height="40">
+                <span class="logo-texto">
+                    <strong>{{ empresa.nombre }}</strong>
+                    <small>{{ empresa.lema }}</small>
+                </span>
+            </a>
+            <nav class="enlaces-secundarios" aria-label="Enlaces secundarios">
+                {% for enlace in empresa.enlaces_secundarios %}
+                <a href="{{ enlace.url }}">{{ enlace.texto }}</a>
+                {% endfor %}
+            </nav>
+            <a href="{{ url_for('autenticar.login') }}" class="boton-sesion">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+                Iniciar sesión
+            </a>
+        </div>
+    </div>
+
+    <!-- Navegación principal -->
+    <header class="barra-nav">
+        <div class="fila-nav">
+            <nav class="menu" id="menu" aria-label="Principal">
+                <a href="{{ url_for('web.inicio') }}" class="menu-inicio" aria-label="Inicio">
+                    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/></svg>
+                </a>
+                {% for item in empresa.menu %}
+                <a href="{{ item.url }}" class="{{ 'con-desplegable' if item.desplegable }}">{{ item.texto }}</a>
+                {% endfor %}
+            </nav>
+            <a href="#" class="boton-inscribir">Cómo inscribirse</a>
+            <button class="menu-toggle" id="menu-toggle" aria-controls="menu" aria-expanded="false">Menú</button>
+        </div>
+    </header>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="pie">
+        <div class="contenedor pie-grid">
+            <div>
+                <strong>{{ empresa.nombre }}</strong>
+                <p>{{ empresa.lema }}</p>
+                <p>{{ empresa.oficina }}</p>
+            </div>
+            <div>
+                <strong>Contacto</strong>
+                <p><a href="tel:{{ empresa.telefono_link }}">{{ empresa.telefono }}</a></p>
+                <p><a href="mailto:{{ empresa.correo }}">{{ empresa.correo }}</a></p>
+            </div>
+        </div>
+        <div class="contenedor pie-legal">
+            <span>© <span id="anio"></span> {{ empresa.nombre }}</span>
+        </div>
+    </footer>
+
+    <!-- Botones flotantes -->
+    <div class="flotantes">
+        <a href="#" class="flotante">
+            <span>Inscríbete</span>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 3h14v18l-7-4-7 4z"/></svg>
+        </a>
+        <a href="#" class="flotante flotante-2">
+            <span>Contáctanos</span>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 14v-2a9 9 0 0 1 18 0v2"/><rect x="3" y="14" width="4" height="6" rx="1"/><rect x="17" y="14" width="4" height="6" rx="1"/></svg>
+        </a>
+    </div>
+
+    <button class="accesibilidad" type="button" aria-label="Opciones de accesibilidad">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="4.5" r="2"/><path d="M4 8h16M12 8v5M9 21l3-8 3 8M7 13l-1 8M17 13l1 8"/></svg>
+    </button>
+
+    <script src="{{ url_for('static', filename='js/colegio.js') }}" defer></script>
+</body>
+
+</html>

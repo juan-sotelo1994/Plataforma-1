@@ -1,0 +1,40 @@
+{% extends 'docente/base_docente.html' %}
+
+{% block title %}Hoja de vida{% endblock %}
+
+{% block content %}
+
+<h1>Hoja de vida</h1>
+<p>Suba su hoja de vida en formato <strong>.pdf</strong> o <strong>.doc</strong>. Al subir un archivo nuevo, reemplaza el anterior.</p>
+
+<section class="bloque-admin">
+    <h2>Archivo actual</h2>
+    {% if hoja %}
+    <dl class="tabla-datos" style="margin:14px 18px;">
+        <div><dt>Archivo</dt><dd>{{ hoja.nombre_original }}</dd></div>
+        <div><dt>Subido el</dt><dd>{{ hoja.subido_en }}</dd></div>
+    </dl>
+    <p style="margin:0 18px 16px;">
+        <a href="{{ url_for('docente.descargar_hoja') }}" class="boton-admin"><i class="fa-solid fa-download"></i> Descargar</a>
+    </p>
+    {% else %}
+    <p class="vacio">Todavía no ha subido su hoja de vida.</p>
+    {% endif %}
+</section>
+
+<section class="bloque-admin">
+    <h2>{{ 'Reemplazar hoja de vida' if hoja else 'Subir hoja de vida' }}</h2>
+    <form method="post" action="{{ url_for('docente.hoja_de_vida') }}" enctype="multipart/form-data" class="formulario-admin">
+        <label class="campo" style="grid-column: 1 / -1;">
+            <span class="campo-etiqueta">Archivo (.pdf o .doc, máximo 5 MB) <em>*</em></span>
+            <input type="file" name="archivo" accept=".pdf,.doc,application/pdf,application/msword" required>
+        </label>
+        <div class="acciones-form">
+            <button type="submit" class="boton-admin boton-admin-primario">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Guardar archivo
+            </button>
+        </div>
+    </form>
+</section>
+
+{% endblock %}

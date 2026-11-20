@@ -1,0 +1,14 @@
+<article class="circular">
+    <div class="circular-fecha">
+        <span class="dia">{{ c.fecha.strftime('%d') }}</span>
+        <span class="mes">{{ c.fecha.strftime('%m/%Y') }}</span>
+    </div>
+    <div class="circular-cuerpo">
+        <h4>{{ c.titulo }}</h4>
+        <p>{{ c.resumen }}</p>
+        <span class="publico">Dirigido a: {{ c.publico }}</span>
+    </div>
+    {% if c.url %}
+    <a href="{{ c.url }}" class="circular-enlace" aria-label="Ver circular: {{ c.titulo }}">Ver <span aria-hidden="true">↗</span></a>
+    {% endif %}
+</article>

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Panel{% endblock %} | {{ empresa.nombre }}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/consola.css') }}">
+</head>
+
+<body>
+    <div class="panel" id="panel">
+
+        <aside class="sidebar" id="sidebar" aria-label="Menú del panel">
+            <div class="sidebar-head">
+                <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="30" height="30">
+                <strong>{{ empresa.nombre }}</strong>
+            </div>
+            <nav class="sidebar-nav">
+                {% for grupo in grupos %}
+                <section class="grupo">
+                    <h3 class="grupo-titulo">
+                        <i class="fa-solid fa-{{ 'graduation-cap' if loop.first else 'file-invoice' }}"></i>{{ grupo.titulo }}
+                    </h3>
+                    <ul>
+                        {% for item in grupo.enlaces %}
+                        <li><a href="{{ item.url }}"><i class="fa-solid fa-file-lines"></i>{{ item.texto }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </section>
+                {% endfor %}
+            </nav>
+            <div class="sidebar-foot">
+                <strong>ESTUDIANTE</strong>
+                <span>v1.0</span>
+            </div>
+        </aside>
+
+        <div class="main">
+            <header class="topbar">
+                <button class="menu-btn" id="menu-btn" aria-controls="sidebar" aria-expanded="false" aria-label="Mostrar menú">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <span class="topbar-title">Matrícula · Resumen académico</span>
+                <div class="topbar-usuario">
+                    <span class="usuario-avatar"><i class="fa-solid fa-user"></i></span>
+                    <span class="correo">{{ usuario.nombres }} {{ usuario.apellidos }} · {{ session.usuario }}</span>
+                    <a href="{{ url_for('web.inicio') }}">INICIO</a>
+                    <a href="{{ url_for('autenticar.logout') }}">CERRAR SESIÓN</a>
+                </div>
+            </header>
+
+            <main class="content">
+                {% with mensajes = get_flashed_messages(with_categories=true) %}
+                {% for categoria, mensaje in mensajes %}
+                <div class="aviso-admin aviso-{{ categoria or 'ok' }}" role="status">{{ mensaje }}</div>
+                {% endfor %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
+            </main>
+
+            <footer class="statusbar">
+                <span>{{ empresa.nombre }}</span>
+                <span>Sesión: {{ session.usuario }}</span>
+            </footer>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/panel.js') }}" defer></script>
+</body>
+
+</html>
