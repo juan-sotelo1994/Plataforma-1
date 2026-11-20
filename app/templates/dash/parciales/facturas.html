@@ -1,0 +1,92 @@
+<!-- Resumen de facturas: gráficos de dona + tabla (se usa en los inicios por rol) -->
+<section class="widgets">
+    {% for g in graficos %}
+    <article class="widget">
+        <svg class="donut" viewBox="0 0 42 42" role="img" aria-label="{{ g.titulo }}: {{ g.total }} en total">
+            <circle cx="21" cy="21" r="15.915" class="donut-track"/>
+            {% set ns = namespace(acumulado=0) %}
+            {% for p in g.partes %}
+            <circle cx="21" cy="21" r="15.915" class="donut-part" stroke="{{ p.color }}"
+                    stroke-dasharray="{{ p.porcentaje }} {{ 100 - p.porcentaje }}"
+                    stroke-dashoffset="{{ 25 - ns.acumulado }}">
+                <title>{{ p.nombre }}: {{ p.cantidad }}</title>
+            </circle>
+            {% set ns.acumulado = ns.acumulado + p.porcentaje %}
+            {% endfor %}
+            <text x="21" y="21" class="donut-total">{{ g.total }}</text>
+            <text x="21" y="26.5" class="donut-label">Total</text>
+        </svg>
+
+        <div class="legend">
+            <h2>{{ g.titulo }}</h2>
+            <ul>
+                {% for p in g.partes %}
+                <li>
+                    <span class="swatch" style="background: {{ p.color }}"></span>
+                    <span class="legend-name">{{ p.nombre }}</span>
+                    <span class="pill">{{ p.cantidad }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </article>
+    {% endfor %}
+</section>
+
+<div class="toolbar">
+    <button class="tool-btn" onclick="location.reload()">
+        <i class="fa-solid fa-rotate"></i> Actualizar
+    </button>
+    {% if puede('facturas') %}
+    <a class="tool-btn" href="{{ url_for('dashboard.facturas_view') }}">
+        <i class="fa-solid fa-file-invoice"></i> Ver facturas
+    </a>
+    {% endif %}
+    {% if facturas_ejemplo %}
+    <span class="muted-text"><i class="fa-solid fa-circle-info"></i> Datos de ejemplo: se reemplazan solos cuando apruebes la primera cotización.</span>
+    {% endif %}
+    <label class="search">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="search" id="table-search" placeholder="Buscar" aria-label="Buscar en la tabla">
+    </label>
+</div>
+
+<div class="table-wrap">
+    <table class="data-table" id="data-table">
+        <thead>
+            <tr>
+                <th data-sort="text">N° factura</th>
+                <th data-sort="text">Cliente</th>
+                <th data-sort="text">NIT</th>
+                <th data-sort="text">Servicio</th>
+                <th data-sort="text">Fecha</th>
+                <th data-sort="text">Vendedor</th>
+                <th data-sort="number">Valor</th>
+                <th data-sort="text">Estado</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in facturas %}
+            <tr>
+                <td>{% if f.id and puede('facturas') %}<a href="{{ url_for('dashboard.factura_detalle', factura_id=f.id) }}" class="link">{{ f.numero }}</a>{% else %}{{ f.numero }}{% endif %}</td>
+                <td>{{ f.cliente }}</td>
+                <td class="mono">{{ f.nit }}</td>
+                <td>{{ f.servicio }}</td>
+                <td class="mono">{{ f.fecha }}</td>
+                <td><i class="fa-solid fa-user-tie muted"></i> {{ f.vendedor }}</td>
+                <td data-value="{{ f.valor }}">
+                    <span class="value-cell">
+                        <span class="value-text">{{ f.valor | pesos }}</span>
+                        <span class="bar"><span style="width: {{ (f.valor * 100 / valor_max) | round(1) }}%"></span></span>
+                    </span>
+                </td>
+                <td>
+                    <span class="status"><span class="status-dot" style="background: {{ colores_estado[f.estado] }}"></span>{{ f.estado }}</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="empty" id="table-empty" hidden>No hay resultados para esa búsqueda.</p>
+</div>
+

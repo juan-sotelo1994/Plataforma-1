@@ -1,0 +1,76 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block title %}Resumen{% endblock %}
+
+{% block content %}
+
+<h1>Resumen de administración</h1>
+<p>Desde aquí se administran los datos académicos. Cada sección permite crear registros y eliminarlos.</p>
+
+<div class="tarjetas-admin">
+    {% for clave, config in entidades.items() %}
+    <a href="{{ url_for('admin.entidad', entidad=clave) }}" class="tarjeta-admin">
+        <span class="tarjeta-numero">{{ conteos[clave] }}</span>
+        <span class="tarjeta-titulo">{{ config.titulo }}</span>
+    </a>
+    {% endfor %}
+</div>
+
+<section class="bloque-admin">
+    <h2>Rendimiento por curso</h2>
+
+    {% if not ranking %}
+    <p class="vacio">Todavía no hay calificaciones registradas. Cuando se registren notas, aquí aparecerán el curso con mejor y con peor rendimiento.</p>
+    {% else %}
+    <div class="destacados">
+        <div class="destacado destacado-mejor">
+            <span class="destacado-etiqueta">Mejor rendimiento</span>
+            {% for fila in mejores %}
+            <strong>{{ fila.materia }} · grupo {{ fila.grupo }}</strong>
+            <span>{{ fila.periodo }} · {{ fila.docente }}</span>
+            <span class="destacado-promedio">Promedio {{ '%.2f' % fila.promedio }}</span>
+            {% endfor %}
+        </div>
+        <div class="destacado destacado-peor">
+            <span class="destacado-etiqueta">Menor rendimiento</span>
+            {% for fila in peores %}
+            <strong>{{ fila.materia }} · grupo {{ fila.grupo }}</strong>
+            <span>{{ fila.periodo }} · {{ fila.docente }}</span>
+            <span class="destacado-promedio">Promedio {{ '%.2f' % fila.promedio }}</span>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Materia</th>
+                    <th scope="col">Grupo</th>
+                    <th scope="col">Periodo</th>
+                    <th scope="col">Docente</th>
+                    <th scope="col">Estudiantes evaluados</th>
+                    <th scope="col">Promedio</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fila in ranking %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ fila.materia }}</td>
+                    <td>{{ fila.grupo }}</td>
+                    <td>{{ fila.periodo }}</td>
+                    <td>{{ fila.docente }}</td>
+                    <td>{{ fila.evaluados }}</td>
+                    <td><strong>{{ '%.2f' % fila.promedio }}</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="nota-pie">Solo aparecen los cursos con al menos una calificación registrada.</p>
+    {% endif %}
+</section>
+
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends 'colegio/base_colegio.html' %}
+
+{% block title %}Circulares y comunicados | {{ empresa.nombre }}{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-grid">
+        <div class="hero-texto">
+            <nav class="migas" aria-label="Ruta de navegación">
+                <a href="{{ url_for('web.inicio') }}">Inicio</a>
+                <span aria-hidden="true">›</span>
+                <a href="#">El Colegio</a>
+                <span aria-hidden="true">›</span>
+                <a href="#">Actualidad</a>
+                <span aria-hidden="true">›</span>
+                <strong>Circulares y comunicados</strong>
+            </nav>
+            <h1>Actualidad</h1>
+        </div>
+        <div class="hero-visual" aria-hidden="true">
+            <div class="hero-circulo">
+                <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="120" height="120">
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="contenedor layout">
+
+    <!-- Contenido principal -->
+    <div class="principal">
+        <p class="intro">
+            Conozca las circulares, comunicados y orientaciones generales de la alta gerencia del Colegio.
+            En esta página las familias, acudientes, estudiantes, docentes, empleados administrativos y
+            comunidad externa accederán a información avalada por la institución y segmentada según el
+            tipo de público.
+        </p>
+
+        {% for seccion in secciones %}
+        <section class="sede" id="{{ seccion.clave }}" aria-labelledby="titulo-{{ seccion.clave }}">
+            <h2 id="titulo-{{ seccion.clave }}">Circulares y comunicados: {{ seccion.nombre }}</h2>
+            <p class="sede-desc">{{ seccion.descripcion }}</p>
+
+            <div class="banner-sede" aria-hidden="true"></div>
+
+            <h3 class="subtitulo">Últimas circulares</h3>
+            <div class="lista-circulares">
+                {% for c in seccion.ultimas %}
+                {% include 'colegio/_tarjeta_circular.html' %}
+                {% else %}
+                <p class="vacio">Aún no hay circulares publicadas.</p>
+                {% endfor %}
+            </div>
+
+            {% if seccion.anteriores %}
+            <details class="anteriores">
+                <summary>Anteriores circulares ({{ seccion.anteriores|length }})</summary>
+                <div class="lista-circulares">
+                    {% for c in seccion.anteriores %}
+                    {% include 'colegio/_tarjeta_circular.html' %}
+                    {% endfor %}
+                </div>
+            </details>
+            {% endif %}
+        </section>
+        {% endfor %}
+    </div>
+
+    <!-- Columna lateral -->
+    <aside class="lateral" aria-label="Información adicional">
+        <nav class="menu-lateral" aria-label="Secciones de actualidad">
+            <a href="#">Actualidad <span aria-hidden="true">→</span></a>
+            <a href="#">Noticias <span aria-hidden="true">→</span></a>
+            <a href="#">Eventos <span aria-hidden="true">→</span></a>
+            <a href="#" aria-current="page">Circulares y comunicados <span aria-hidden="true">→</span></a>
+        </nav>
+
+        <div class="bloque-admision">
+            <h3>Solicitud de admisión</h3>
+            {% for enlace in empresa.admision %}
+            <a href="{{ enlace.url }}" class="boton-lima">{{ enlace.texto }} <span aria-hidden="true">↗</span></a>
+            {% endfor %}
+        </div>
+
+        <div class="bloque-contacto">
+            <h3>Comunícate con nosotros</h3>
+            <ul class="contactos">
+                {% for contacto in empresa.contactos %}
+                <li>
+                    <strong>{{ contacto.nombre }}</strong>
+                    <span>{{ contacto.cargo }}</span>
+                    <a href="mailto:{{ contacto.correo }}">{{ contacto.correo }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+            <p class="oficina"><strong>Oficinas</strong><br>{{ empresa.oficina }}</p>
+            <p class="oficina"><strong>Teléfono</strong><br><a href="tel:{{ empresa.telefono_link }}">{{ empresa.telefono }}</a></p>
+        </div>
+    </aside>
+
+</div>
+
+{% endblock %}

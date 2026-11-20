@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Docente{% endblock %} | {{ empresa.nombre }}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/consola.css') }}">
+</head>
+
+<body>
+    <div class="panel" id="panel">
+
+        <aside class="sidebar" id="sidebar" aria-label="Menú del docente">
+            <div class="sidebar-head">
+                <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="30" height="30">
+                <strong>{{ empresa.nombre }}</strong>
+            </div>
+            <nav class="sidebar-nav">
+                <section class="grupo">
+                    <h3 class="grupo-titulo"><i class="fa-solid fa-chalkboard-user"></i>Docencia</h3>
+                    <ul>
+                        <li><a href="{{ url_for('docente.inicio') }}"><i class="fa-solid fa-layer-group"></i>Mis cursos</a></li>
+                        <li><a href="{{ url_for('docente.materias') }}"><i class="fa-solid fa-book"></i>Materias</a></li>
+                        <li><a href="{{ url_for('docente.hoja_de_vida') }}"><i class="fa-solid fa-id-card"></i>Hoja de vida</a></li>
+                    </ul>
+                </section>
+            </nav>
+            <div class="sidebar-foot">
+                <strong>DOCENTE</strong>
+                <span>v1.0</span>
+            </div>
+        </aside>
+
+        <div class="main">
+            <header class="topbar">
+                <button class="menu-btn" id="menu-btn" aria-controls="sidebar" aria-expanded="false" aria-label="Mostrar menú">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <span class="topbar-title">Portal docente</span>
+                <div class="topbar-usuario">
+                    <span class="usuario-avatar"><i class="fa-solid fa-user"></i></span>
+                    <span class="correo">{{ session.usuario }}</span>
+                    <a href="{{ url_for('web.inicio') }}">INICIO</a>
+                    <a href="{{ url_for('autenticar.logout') }}">CERRAR SESIÓN</a>
+                </div>
+            </header>
+
+            <main class="content">
+                {% with mensajes = get_flashed_messages(with_categories=true) %}
+                {% for categoria, mensaje in mensajes %}
+                <div class="aviso-admin aviso-{{ categoria or 'ok' }}" role="status">{{ mensaje }}</div>
+                {% endfor %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
+            </main>
+
+            <footer class="statusbar">
+                <span>{{ empresa.nombre }}</span>
+                <span>Sesión: {{ session.usuario }}</span>
+            </footer>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/panel.js') }}" defer></script>
+</body>
+
+</html>

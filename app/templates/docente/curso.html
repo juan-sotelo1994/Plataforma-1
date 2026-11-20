@@ -1,0 +1,60 @@
+{% extends 'docente/base_docente.html' %}
+
+{% block title %}{{ curso.materia }}{% endblock %}
+
+{% block content %}
+
+<p><a href="{{ url_for('docente.inicio') }}">← Volver a mis cursos</a></p>
+
+<h1>{{ curso.materia }} · grupo {{ curso.grupo }}</h1>
+<p>Periodo {{ curso.periodo }} · Jornada {{ curso.jornada }} · {{ curso.creditos }} crédito(s) · Cupo {{ curso.cupo }}</p>
+
+<section class="bloque-admin">
+    <h2>Calificación de los estudiantes al docente</h2>
+    {% if evaluacion.total %}
+    <p>Promedio <strong>{{ '%.2f' % evaluacion.promedio }} de 5</strong>, con {{ evaluacion.total }} calificación(es). Las calificaciones son anónimas.</p>
+    {% else %}
+    <p class="vacio">Ningún estudiante ha calificado al docente todavía.</p>
+    {% endif %}
+</section>
+
+<section class="bloque-admin">
+    <h2>Notas de los estudiantes <span class="contador">(escala de 0.0 a 5.0)</span></h2>
+    {% if estudiantes %}
+    <form method="post" action="{{ url_for('docente.curso', curso_id=curso.id) }}">
+        <div class="tabla-contenedor">
+            <table class="tabla-admin">
+                <thead>
+                    <tr>
+                        <th scope="col">Código</th>
+                        <th scope="col">Estudiante</th>
+                        <th scope="col">Nota actual</th>
+                        <th scope="col">Nueva nota</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for estudiante in estudiantes %}
+                    <tr>
+                        <td>{{ estudiante.codigo }}</td>
+                        <td>{{ estudiante.nombre }}</td>
+                        <td>{{ '%.1f' % estudiante.nota if estudiante.nota is not none else '—' }}</td>
+                        <td>
+                            <input type="number" name="nota_{{ estudiante.id }}" min="0" max="5" step="0.1"
+                                   placeholder="0.0 – 5.0" class="entrada-nota">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="nota-pie">Deje vacío el campo de un estudiante para no cambiar su nota.</p>
+        <div class="acciones-form">
+            <button type="submit" class="boton-admin boton-admin-primario">Guardar notas</button>
+        </div>
+    </form>
+    {% else %}
+    <p class="vacio">No hay estudiantes matriculados en este curso. El administrador puede matricularlos desde el panel de administración.</p>
+    {% endif %}
+</section>
+
+{% endblock %}
