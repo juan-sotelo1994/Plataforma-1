@@ -102,14 +102,25 @@ CREATE TABLE IF NOT EXISTS notas_criterio (
     PRIMARY KEY (criterio_id, estudiante_id)
 );
 
--- Cuentas de docentes y estudiantes (el administrador vive en el .env)
+-- Personal administrativo y auxiliares (no son docentes ni estudiantes)
+CREATE TABLE IF NOT EXISTS personal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombres TEXT NOT NULL,
+    apellidos TEXT NOT NULL,
+    documento TEXT NOT NULL UNIQUE,
+    correo TEXT,
+    tipo TEXT NOT NULL CHECK (tipo IN ('administrativo', 'auxiliar'))
+);
+
+-- Cuentas de ingreso (el administrador vive en el .env)
 CREATE TABLE IF NOT EXISTS usuarios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     correo TEXT NOT NULL UNIQUE,
     contrasena_hash TEXT NOT NULL,
-    rol TEXT NOT NULL CHECK (rol IN ('docente', 'estudiante')),
+    rol TEXT NOT NULL CHECK (rol IN ('docente', 'estudiante', 'administrativo', 'auxiliar')),
     docente_id INTEGER REFERENCES docentes(id) ON DELETE CASCADE,
-    estudiante_id INTEGER REFERENCES estudiantes(id) ON DELETE CASCADE
+    estudiante_id INTEGER REFERENCES estudiantes(id) ON DELETE CASCADE,
+    personal_id INTEGER REFERENCES personal(id) ON DELETE CASCADE
 );
 
 -- Inscripción de un estudiante en un curso
@@ -289,7 +300,7 @@ def _migrar(conexion):
             conexion.execute(f'ALTER TABLE docentes ADD COLUMN {columna} TEXT')
 
     columnas_est = {fila['name'] for fila in conexion.execute('PRAGMA table_info(estudiantes)')}
-    for columna in ('telefono', 'celular', 'direccion', 'pais', 'departamento', 'ciudad', 'nombre_padre', 'telefono_padre', 'documento_padre', 'nombre_madre', 'telefono_madre', 'documento_madre'):
+    for columna in ('telefono', 'celular', 'direccion', 'pais', 'departamento', 'ciudad', 'nombre_padre', 'telefono_padre', 'documento_padre', 'nombre_madre', 'telefono_madre', 'documento_madre', 'fecha_nacimiento', 'lugar_expedicion', 'fecha_expedicion', 'estado_civil', 'tipo_sangre', 'tiene_discapacidad', 'discapacidad'):
         if columna not in columnas_est:
             conexion.execute(f'ALTER TABLE estudiantes ADD COLUMN {columna} TEXT')
 
@@ -298,7 +309,7 @@ def _migrar(conexion):
                     'documento_padre', 'documento_madre', 'tipo_documento', 'sexo', 'primer_nombre',
                     'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'direccion', 'celular', 'ciudad',
                     'pais', 'departamento', 'numero_hermanos', 'colegio_anterior', 'grado_anterior',
-                    'anio_anterior', 'estudiante_id'):
+                    'anio_anterior', 'estudiante_id', 'fecha_nacimiento', 'lugar_expedicion', 'fecha_expedicion', 'estado_civil', 'tipo_sangre', 'tiene_discapacidad', 'discapacidad'):
         if columna not in columnas:
             conexion.execute(f'ALTER TABLE aspirantes ADD COLUMN {columna} TEXT')
 
@@ -331,6 +342,61 @@ def _migrar(conexion):
     _permitir_curso_sin_docente(conexion)
     _crear_grupos_curso(conexion)
     _sembrar_materias_grados(conexion)
+    _ampliar_roles_usuarios(conexion)
+    _agregar_referencias_familiares(conexion)
+    _agregar_certificado_discapacidad(conexion)
+
+
+def _agregar_referencias_familiares(conexion):
+    """Una sola vez: el aspirante sube las referencias familiares junto con los documentos de la familia."""
+    if conexion.execute("SELECT 1 FROM configuracion WHERE clave = 'referencias_familiares_v7'").fetchone():
+        return
+    conexion.execute(
+        "INSERT OR IGNORE INTO requisitos (nombre, descripcion, obligatorio, formatos, paso, seccion) "
+        "VALUES ('Referencias familiares', 'Referencias personales o familiares del aspirante, en PDF.', "
+        "1, 'pdf', 2, 'padres')")
+    conexion.execute("INSERT INTO configuracion (clave, valor) VALUES ('referencias_familiares_v7', 'si')")
+    conexion.commit()
+
+
+def _agregar_certificado_discapacidad(conexion):
+    """Una sola vez: el certificado de discapacidad solo es obligatorio si el aspirante respondió Sí."""
+    if conexion.execute("SELECT 1 FROM configuracion WHERE clave = 'certificado_discapacidad_v8'").fetchone():
+        return
+    conexion.execute(
+        "INSERT OR IGNORE INTO requisitos (nombre, descripcion, obligatorio, formatos, paso, seccion) "
+        "VALUES ('Certificado de discapacidad', 'Certificado de discapacidad, en PDF. Solo si tiene alguna discapacidad.', "
+        "0, 'pdf', 1, 'aspirante')")
+    conexion.execute("INSERT INTO configuracion (clave, valor) VALUES ('certificado_discapacidad_v8', 'si')")
+    conexion.commit()
+
+
+def _ampliar_roles_usuarios(conexion):
+    """Una sola vez por base: permite las cuentas de administrativos y auxiliares.
+
+    SQLite no permite cambiar un CHECK con ALTER, así que la tabla se reconstruye.
+    """
+    columnas = {fila['name'] for fila in conexion.execute('PRAGMA table_info(usuarios)')}
+    if 'personal_id' in columnas:
+        return
+    conexion.commit()
+    conexion.execute('PRAGMA foreign_keys = OFF')
+    conexion.execute('''
+        CREATE TABLE usuarios_nuevo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            correo TEXT NOT NULL UNIQUE,
+            contrasena_hash TEXT NOT NULL,
+            rol TEXT NOT NULL CHECK (rol IN ('docente', 'estudiante', 'administrativo', 'auxiliar')),
+            docente_id INTEGER REFERENCES docentes(id) ON DELETE CASCADE,
+            estudiante_id INTEGER REFERENCES estudiantes(id) ON DELETE CASCADE,
+            personal_id INTEGER REFERENCES personal(id) ON DELETE CASCADE
+        )''')
+    conexion.execute('INSERT INTO usuarios_nuevo (id, correo, contrasena_hash, rol, docente_id, estudiante_id) '
+                     'SELECT id, correo, contrasena_hash, rol, docente_id, estudiante_id FROM usuarios')
+    conexion.execute('DROP TABLE usuarios')
+    conexion.execute('ALTER TABLE usuarios_nuevo RENAME TO usuarios')
+    conexion.execute('PRAGMA foreign_keys = ON')
+    conexion.commit()
 
 
 def _crear_grupos_curso(conexion):

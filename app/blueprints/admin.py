@@ -1,3 +1,4 @@
+import datetime
 import uuid
 import io
 import sqlite3
@@ -30,6 +31,26 @@ ENTIDADES = {
             {'nombre': 'nombre', 'etiqueta': 'Nombre', 'requerido': True,
              'ejemplo': 'Mañana'},
             {'nombre': 'horario', 'etiqueta': 'Horario', 'ejemplo': '6:00 a. m. – 12:00 m.'},
+        ],
+    },
+    'personal': {
+        'titulo': 'Personal',
+        'singular': 'persona del personal',
+        'tabla': 'personal',
+        'consulta': ("SELECT id, nombres, apellidos, documento, correo, "
+                     "CASE tipo WHEN 'administrativo' THEN 'Administrativo' ELSE 'Auxiliar' END AS cargo "
+                     "FROM personal ORDER BY apellidos, nombres"),
+        'columnas': [('Nombres', 'nombres'), ('Apellidos', 'apellidos'), ('Documento', 'documento'),
+                     ('Correo', 'correo'), ('Cargo', 'cargo')],
+        'campos': [
+            {'nombre': 'nombres', 'etiqueta': 'Nombres', 'requerido': True},
+            {'nombre': 'apellidos', 'etiqueta': 'Apellidos', 'requerido': True},
+            {'nombre': 'documento', 'etiqueta': 'Documento', 'requerido': True},
+            {'nombre': 'correo', 'etiqueta': 'Correo', 'tipo': 'email'},
+            {'nombre': 'tipo', 'etiqueta': 'Cargo', 'tipo': 'select', 'requerido': True,
+             'opciones_sql': ("SELECT 'administrativo' AS id, 'Administrativo' AS texto "
+                              "UNION ALL SELECT 'auxiliar', 'Auxiliar'"),
+             'ayuda': 'Después cree su acceso desde la sección Crear acceso.'},
         ],
     },
     'docentes': {
@@ -109,6 +130,20 @@ ENTIDADES = {
             {'nombre': 'programa', 'etiqueta': 'Programa'},
             {'nombre': 'jornada_id', 'etiqueta': 'Jornada', 'tipo': 'select',
              'opciones_sql': 'SELECT id, nombre AS texto FROM jornadas ORDER BY nombre'},
+            {'nombre': 'fecha_nacimiento', 'etiqueta': 'Fecha de nacimiento', 'tipo': 'date'},
+            {'nombre': 'estado_civil', 'etiqueta': 'Estado civil', 'tipo': 'select',
+             'opciones_sql': "SELECT 'Soltero(a)' AS id, 'Soltero(a)' AS texto UNION ALL SELECT 'Casado(a)', 'Casado(a)' "
+                              "UNION ALL SELECT 'Unión libre', 'Unión libre' UNION ALL SELECT 'Divorciado(a)', 'Divorciado(a)' "
+                              "UNION ALL SELECT 'Viudo(a)', 'Viudo(a)'"},
+            {'nombre': 'tipo_sangre', 'etiqueta': 'Tipo de sangre', 'tipo': 'select',
+             'opciones_sql': "SELECT 'O+' AS id, 'O+' AS texto UNION ALL SELECT 'O-', 'O-' UNION ALL SELECT 'A+', 'A+' "
+                              "UNION ALL SELECT 'A-', 'A-' UNION ALL SELECT 'B+', 'B+' UNION ALL SELECT 'B-', 'B-' "
+                              "UNION ALL SELECT 'AB+', 'AB+' UNION ALL SELECT 'AB-', 'AB-'"},
+            {'nombre': 'lugar_expedicion', 'etiqueta': 'Lugar de expedición del documento'},
+            {'nombre': 'fecha_expedicion', 'etiqueta': 'Fecha de expedición del documento', 'tipo': 'date'},
+            {'nombre': 'tiene_discapacidad', 'etiqueta': '¿Tiene alguna discapacidad?', 'tipo': 'select',
+             'opciones_sql': "SELECT 'Sí' AS id, 'Sí' AS texto UNION ALL SELECT 'No', 'No'"},
+            {'nombre': 'discapacidad', 'etiqueta': 'Especifique la discapacidad'},
         ],
     },
     'calificaciones': {
@@ -215,9 +250,12 @@ ENTIDADES = {
 }
 
 # Tipos de persona que pueden tener una cuenta: (tabla, etiqueta)
+# Cada tipo: (tabla, etiqueta, columna que lo identifica en usuarios, filtro sobre la tabla)
 ROLES_CUENTA = {
-    'docente': ('docentes', 'Docente'),
-    'estudiante': ('estudiantes', 'Estudiante'),
+    'docente': ('docentes', 'Docente', 'docente_id', ''),
+    'estudiante': ('estudiantes', 'Estudiante', 'estudiante_id', ''),
+    'administrativo': ('personal', 'Administrativo', 'personal_id', "WHERE tipo = 'administrativo'"),
+    'auxiliar': ('personal', 'Auxiliar', 'personal_id', "WHERE tipo = 'auxiliar'"),
 }
 
 
@@ -297,6 +335,13 @@ def _valores_del_formulario(config):
             if valor is not None and not campo['minimo'] <= valor <= campo['maximo']:
                 raise ValueError(f'{etiqueta} debe estar entre {campo["minimo"]} y {campo["maximo"]}.')
             valores[campo['nombre']] = valor
+        elif campo.get('tipo') == 'date':
+            if bruto:
+                try:
+                    datetime.date.fromisoformat(bruto)
+                except ValueError:
+                    raise ValueError(f'{etiqueta} debe ser una fecha válida.')
+            valores[campo['nombre']] = bruto or None
         elif campo.get('tipo') == 'select':
             # Los menús pueden devolver números (ids) o textos (por ejemplo, 'pdf' o 'imagen')
             if not bruto:
@@ -839,7 +884,7 @@ def accesos():
         elif len(contrasena) < 6:
             flash('La contraseña debe tener al menos 6 caracteres.', 'error')
         else:
-            columna = 'docente_id' if rol == 'docente' else 'estudiante_id'
+            columna = ROLES_CUENTA[rol][2]
             try:
                 db.execute(
                     f'INSERT INTO usuarios (correo, contrasena_hash, rol, {columna}) VALUES (?, ?, ?, ?)',
@@ -852,21 +897,41 @@ def accesos():
 
     cuentas = db.execute(
         "SELECT u.id, u.correo, u.rol, "
-        "COALESCE(d.nombres || ' ' || d.apellidos, e.nombres || ' ' || e.apellidos) AS persona "
+        "COALESCE(d.nombres || ' ' || d.apellidos, e.nombres || ' ' || e.apellidos, "
+        "p.nombres || ' ' || p.apellidos) AS persona "
         "FROM usuarios u "
         "LEFT JOIN docentes d ON d.id = u.docente_id "
         "LEFT JOIN estudiantes e ON e.id = u.estudiante_id "
+        "LEFT JOIN personal p ON p.id = u.personal_id "
         "ORDER BY u.rol, persona").fetchall()
 
     personas = []
-    for rol, (tabla, etiqueta) in ROLES_CUENTA.items():
+    for rol, (tabla, etiqueta, _, filtro) in ROLES_CUENTA.items():
         filas = db.execute(
-            f"SELECT id, nombres || ' ' || apellidos AS nombre FROM {tabla} ORDER BY apellidos, nombres"
+            f"SELECT id, nombres || ' ' || apellidos AS nombre FROM {tabla} {filtro} ORDER BY apellidos, nombres"
         ).fetchall()
         personas += [(f'{rol}:{fila["id"]}', f'{etiqueta} · {fila["nombre"]}') for fila in filas]
 
     return render_template('admin/accesos.html', cuentas=cuentas, personas=personas,
                            entidades=ENTIDADES)
+
+
+@admin_bp.route('/accesos/<int:cuenta_id>/contrasena', methods=['POST'])
+@requiere_admin
+def restablecer_contrasena(cuenta_id):
+    db = get_db()
+    nueva = request.form.get('contrasena', '')
+    if len(nueva) < 6:
+        flash('La contraseña debe tener al menos 6 caracteres.', 'error')
+        return redirect(url_for('admin.accesos'))
+    cuenta = db.execute('SELECT correo FROM usuarios WHERE id = ?', (cuenta_id,)).fetchone()
+    if cuenta is None:
+        abort(404)
+    db.execute('UPDATE usuarios SET contrasena_hash = ? WHERE id = ?',
+               (generate_password_hash(nueva), cuenta_id))
+    db.commit()
+    flash(f'Contraseña restablecida para {cuenta["correo"]}.', 'ok')
+    return redirect(url_for('admin.accesos'))
 
 
 @admin_bp.route('/accesos/<int:cuenta_id>/eliminar', methods=['POST'])
@@ -896,6 +961,9 @@ def documentos_aspirante(aspirante_id):
         "FROM requisitos r "
         "LEFT JOIN documentos_aspirante d ON d.requisito_id = r.id AND d.aspirante_id = ? "
         "WHERE r.activo = 1 ORDER BY r.id", (aspirante_id,)).fetchall()
+    # El certificado de discapacidad solo aplica si el aspirante respondió Sí
+    if db.execute('SELECT tiene_discapacidad FROM aspirantes WHERE id = ?', (aspirante_id,)).fetchone()[0] != 'Sí':
+        requisitos = [r for r in requisitos if r['nombre'] != 'Certificado de discapacidad']
     cumple = all(fila['estado'] == 'aprobado' for fila in requisitos if fila['obligatorio'])
 
     return render_template('admin/documentos_aspirante.html', aspirante=aspirante,
@@ -992,7 +1060,7 @@ def habilitar_aspirante(aspirante_id):
             estudiante_id = cursor.lastrowid
             mensaje = 'Acceso habilitado. El aspirante ya puede entrar a su portal de estudiante.'
         # Los datos de contacto y de familia se copian del aspirante al registro de estudiante
-        copia = {c: aspirante[c] for c in ('telefono', 'celular', 'direccion', 'pais', 'departamento', 'ciudad', 'nombre_padre', 'telefono_padre', 'documento_padre', 'nombre_madre', 'telefono_madre', 'documento_madre')}
+        copia = {c: aspirante[c] for c in ('telefono', 'celular', 'direccion', 'pais', 'departamento', 'ciudad', 'nombre_padre', 'telefono_padre', 'documento_padre', 'nombre_madre', 'telefono_madre', 'documento_madre', 'fecha_nacimiento', 'lugar_expedicion', 'fecha_expedicion', 'estado_civil', 'tipo_sangre', 'tiene_discapacidad', 'discapacidad')}
         db.execute('UPDATE estudiantes SET ' + ', '.join(f'{c} = ?' for c in copia) + ' WHERE id = ?',
                    [copia[c] for c in copia] + [estudiante_id])
         # La cuenta usa el mismo correo y la misma contraseña del aspirante

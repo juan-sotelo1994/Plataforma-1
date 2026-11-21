@@ -9,6 +9,8 @@ INICIO_POR_ROL = {
     'docente': 'docente.inicio',
     'estudiante': 'dashboard.dash_view',
     'aspirante': 'aspirante.inicio',
+    'administrativo': 'personal.inicio',
+    'auxiliar': 'personal.inicio',
 }
 
 
