@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS docentes (
     apellidos TEXT NOT NULL,
     documento TEXT NOT NULL UNIQUE,
     correo TEXT,
-    especialidad TEXT
+    especialidad TEXT,
+    sexo TEXT, telefono TEXT, celular TEXT, direccion TEXT,
+    pais TEXT, departamento TEXT, ciudad TEXT
 );
 
 CREATE TABLE IF NOT EXISTS materias (
@@ -167,6 +169,17 @@ CREATE TABLE IF NOT EXISTS hermanos (
     orden INTEGER NOT NULL DEFAULT 0
 );
 
+-- Documentos de formación del docente: título profesional, bachiller, cursos y cartas de experiencia
+CREATE TABLE IF NOT EXISTS docentes_documentos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    docente_id INTEGER NOT NULL REFERENCES docentes(id) ON DELETE CASCADE,
+    tipo TEXT NOT NULL,
+    nombre_original TEXT NOT NULL,
+    nombre_archivo TEXT NOT NULL,
+    subido_en TEXT NOT NULL,
+    UNIQUE (docente_id, tipo)
+);
+
 -- Materias que un docente está habilitado para dictar
 CREATE TABLE IF NOT EXISTS docente_materias (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -240,6 +253,11 @@ def _migrar(conexion):
     if 'formatos' not in columnas:
         conexion.execute("ALTER TABLE requisitos ADD COLUMN formatos TEXT NOT NULL DEFAULT 'pdf' "
                          "CHECK (formatos IN ('pdf', 'imagen'))")
+
+    columnas_doc = {fila['name'] for fila in conexion.execute('PRAGMA table_info(docentes)')}
+    for columna in ('sexo', 'telefono', 'celular', 'direccion', 'pais', 'departamento', 'ciudad'):
+        if columna not in columnas_doc:
+            conexion.execute(f'ALTER TABLE docentes ADD COLUMN {columna} TEXT')
 
     columnas_est = {fila['name'] for fila in conexion.execute('PRAGMA table_info(estudiantes)')}
     for columna in ('telefono', 'celular', 'direccion', 'pais', 'departamento', 'ciudad', 'nombre_padre', 'telefono_padre', 'documento_padre', 'nombre_madre', 'telefono_madre', 'documento_madre'):

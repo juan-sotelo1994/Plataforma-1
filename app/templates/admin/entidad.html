@@ -4,7 +4,7 @@
 
 {# Campos del formulario: los usan la ventana de crear y la de editar #}
 {% macro campos_form(campos, materias_opciones, seleccionadas, hoja, editando) -%}
-{% for campo in campos %}
+{% for campo in campos if not (editando and campo.no_columna) %}
 <label class="form-field {{ 'completo' if campo.tipo == 'textarea' }}">
     <span>{{ campo.etiqueta }}{% if not campo.requerido %} <small>(opcional)</small>{% endif %}</span>
     {% if campo.tipo == 'select' %}
@@ -100,6 +100,9 @@
                               onsubmit="return confirm('¿Habilitar el acceso al portal de estudiante? El aspirante entrará con el mismo correo y contraseña.');">
                             <button type="submit" class="boton-admin boton-admin-primario" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-user-check"></i> Habilitar acceso</button>
                         </form>
+                        {% endif %}
+                        {% if entidad == 'docentes' %}
+                        <a href="{{ url_for('admin.documentos_docente', docente_id=fila['id']) }}" class="boton-admin" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-folder-open"></i> Documentos</a>
                         {% endif %}
                         {% if entidad == 'aspirantes' %}
                         <a href="{{ url_for('admin.documentos_aspirante', aspirante_id=fila['id']) }}" class="boton-admin" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-folder-open"></i> Documentos</a>

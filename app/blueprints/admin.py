@@ -1,3 +1,4 @@
+import uuid
 import io
 import sqlite3
 
@@ -7,6 +8,8 @@ from werkzeug.security import generate_password_hash
 from nucleo.db import get_db
 from servicios.documentos import DOCS_DIR
 from servicios.comprobante import generar_comprobante
+from servicios import documentos_docente as docs_docente
+from servicios import hojas as hojas_mod
 from servicios.hojas import guardar_hoja
 from nucleo.seguridad import requiere_rol
 
@@ -44,9 +47,9 @@ ENTIDADES = {
         'campos': [
             {'nombre': 'nombres', 'etiqueta': 'Nombres', 'requerido': True},
             {'nombre': 'apellidos', 'etiqueta': 'Apellidos', 'requerido': True},
-            {'nombre': 'documento', 'etiqueta': 'Documento', 'requerido': True},
-            {'nombre': 'correo', 'etiqueta': 'Correo', 'tipo': 'email'},
-            {'nombre': 'especialidad', 'etiqueta': 'Especialidad'},
+            {'nombre': 'correo', 'etiqueta': 'Correo', 'tipo': 'email', 'requerido': True},
+            {'nombre': 'contrasena', 'etiqueta': 'Clave temporal', 'tipo': 'password', 'requerido': True,
+             'no_columna': True, 'ayuda': 'Mínimo 6 caracteres. El docente la cambiará al ingresar.'},
         ],
     },
     'materias': {
@@ -279,6 +282,8 @@ def _opciones(campo):
 def _valores_del_formulario(config):
     valores = {}
     for campo in config['campos']:
+        if campo.get('no_columna'):
+            continue
         bruto = request.form.get(campo['nombre'], '').strip()
         etiqueta = campo['etiqueta']
 
@@ -365,14 +370,25 @@ def entidad(entidad):
             if entidad == 'cursos' and not _docente_puede_dictar(valores['docente_id'], valores['materia_id']):
                 raise ValueError('Ese docente no está habilitado para dictar esa materia. '
                                  'Revise las materias que puede dictar en su registro.')
+            clave = request.form.get('contrasena', '')
+            if entidad == 'docentes':
+                if len(clave) < 6:
+                    raise ValueError('La clave temporal debe tener al menos 6 caracteres.')
+                valores['correo'] = (valores.get('correo') or '').lower()
+                if db.execute('SELECT 1 FROM usuarios WHERE correo = ?', (valores['correo'],)).fetchone():
+                    raise ValueError('Ese correo ya tiene una cuenta en la plataforma.')
+                # El documento real lo registra el docente en Mis datos
+                valores['documento'] = f'PENDIENTE-{uuid.uuid4().hex[:8]}'
             columnas = ', '.join(valores)
             marcas = ', '.join('?' for _ in valores)
             cursor = db.execute(f'INSERT INTO {config["tabla"]} ({columnas}) VALUES ({marcas})',
                                 list(valores.values()))
-            db.commit()
-            flash('Registro guardado correctamente.', 'ok')
             if entidad == 'docentes':
-                _guardar_extras_docente(cursor.lastrowid)
+                db.execute("INSERT INTO usuarios (correo, contrasena_hash, rol, docente_id) VALUES (?, ?, 'docente', ?)",
+                           (valores['correo'], generate_password_hash(clave), cursor.lastrowid))
+            db.commit()
+            flash('Docente creado. Ya puede ingresar con su correo y la clave temporal.' if entidad == 'docentes'
+                  else 'Registro guardado correctamente.', 'ok')
         except ValueError as error:
             flash(str(error), 'error')
         except sqlite3.IntegrityError:
@@ -388,7 +404,7 @@ def entidad(entidad):
             campo['opciones'] = _opciones(campo)
         campos.append(campo)
 
-    materias_opciones = _opciones({'opciones_sql': SQL_MATERIAS_OPCIONES}) if entidad == 'docentes' else None
+    materias_opciones = None
     return render_template('admin/entidad.html', entidad=entidad, config=config,
                            filas=filas, campos=campos, entidades=ENTIDADES,
                            materias_opciones=materias_opciones, seleccionadas=set(),
@@ -703,3 +719,49 @@ def deshabilitar_aspirante(aspirante_id):
     db.commit()
     flash('Acceso deshabilitado. El aspirante ya no puede entrar a la plataforma.', 'ok')
     return redirect(url_for('admin.entidad', entidad='aspirantes'))
+
+
+def _documentos_del_docente(docente_id):
+    """Lista de documentos del docente: hoja de vida, formación y antecedentes."""
+    db = get_db()
+    subidos = {fila['tipo']: dict(fila) for fila in db.execute(
+        'SELECT tipo, nombre_original, nombre_archivo, subido_en FROM docentes_documentos WHERE docente_id = ?',
+        (docente_id,)).fetchall()}
+    hoja = db.execute('SELECT nombre_original, nombre_archivo, subido_en FROM hojas_de_vida WHERE docente_id = ?',
+                      (docente_id,)).fetchone()
+    lista = [{'clave': 'hoja', 'etiqueta': 'Hoja de vida', 'archivo': dict(hoja) if hoja else None}]
+    for tipo, (etiqueta, obligatorio) in docs_docente.TIPOS.items():
+        lista.append({'clave': tipo, 'etiqueta': etiqueta, 'archivo': subidos.get(tipo)})
+    for tipo, (etiqueta, _, obligatorio) in docs_docente.ANTECEDENTES.items():
+        lista.append({'clave': tipo, 'etiqueta': etiqueta, 'archivo': subidos.get(tipo)})
+    return lista
+
+
+@admin_bp.route('/docentes/<int:docente_id>/documentos')
+@requiere_admin
+def documentos_docente(docente_id):
+    db = get_db()
+    docente = db.execute('SELECT id, nombres, apellidos, documento, correo FROM docentes WHERE id = ?',
+                         (docente_id,)).fetchone()
+    if docente is None:
+        abort(404)
+    return render_template('admin/documentos_docente.html', docente=docente,
+                           documentos=_documentos_del_docente(docente_id), entidades=ENTIDADES)
+
+
+@admin_bp.route('/docentes/<int:docente_id>/documentos/<clave>/descargar')
+@requiere_admin
+def descargar_documento_docente(docente_id, clave):
+    db = get_db()
+    if clave == 'hoja':
+        fila = db.execute('SELECT nombre_original, nombre_archivo FROM hojas_de_vida WHERE docente_id = ?',
+                          (docente_id,)).fetchone()
+        carpeta = hojas_mod.HOJAS_DIR
+    else:
+        fila = db.execute('SELECT nombre_original, nombre_archivo FROM docentes_documentos '
+                          'WHERE docente_id = ? AND tipo = ?', (docente_id, clave)).fetchone()
+        carpeta = docs_docente.DOCS_DIR
+    if fila is None:
+        abort(404)
+    return send_from_directory(carpeta, fila['nombre_archivo'], as_attachment=True,
+                               download_name=fila['nombre_original'])
