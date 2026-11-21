@@ -4,11 +4,11 @@ import uuid
 
 from werkzeug.utils import secure_filename
 
-from db import get_db
+from nucleo.db import get_db
 
 
 # Se guardan fuera de static/, para que no se puedan abrir por una URL pública
-HOJAS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'hojas_de_vida')
+HOJAS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads', 'hojas_de_vida')
 TAMANO_MAX_HOJA = 5 * 1024 * 1024  # 5 MB
 # Extensión permitida y firma inicial del archivo (se revisa el contenido, no solo el nombre)
 FIRMAS_HOJA = {

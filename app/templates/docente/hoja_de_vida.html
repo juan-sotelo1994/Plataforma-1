@@ -22,7 +22,7 @@
     {% endif %}
 </section>
 
-<section class="bloque-admin">
+<section class="bloque-admin bloque-formulario">
     <h2>{{ 'Reemplazar hoja de vida' if hoja else 'Subir hoja de vida' }}</h2>
     <form method="post" action="{{ url_for('docente.hoja_de_vida') }}" enctype="multipart/form-data" class="formulario-admin">
         <label class="campo" style="grid-column: 1 / -1;">

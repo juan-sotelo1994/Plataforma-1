@@ -1,7 +1,8 @@
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
-from db import get_db
-from seguridad import requiere_rol
+from nucleo.db import get_db
+from servicios.geografia import DEPARTAMENTOS
+from nucleo.seguridad import requiere_rol
 
 
 # Panel del estudiante. Los datos salen de la base de datos según la sesión.
@@ -11,7 +12,14 @@ dashboard_bp = Blueprint('dashboard', __name__, url_prefix='/panel')
 # Notas desde este valor se consideran aprobadas (escala de 0.0 a 5.0)
 NOTA_APROBATORIA = 3.0
 
+# Enlaces de recursos: reemplazar por las direcciones reales de la institución
+BIBLIOTECA_URL = '#'
+MOODLE_URL = '#'
+
 MENU_GRUPOS = [
+    {'titulo': 'Mi cuenta', 'enlaces': [
+        {'texto': 'Actualizar mis datos', 'url': '/panel/datos'},
+    ]},
     {'titulo': 'Académico', 'enlaces': [
         {'texto': 'Notas (PDF)', 'url': '#'},
         {'texto': 'Notas', 'url': '#'},
@@ -22,6 +30,10 @@ MENU_GRUPOS = [
         {'texto': 'Acuerdos de pago', 'url': '#'},
         {'texto': 'Recibos', 'url': '#'},
         {'texto': 'Constancias en línea', 'url': '#'},
+    ]},
+    {'titulo': 'Recursos', 'enlaces': [
+        {'texto': 'Biblioteca virtual', 'url': BIBLIOTECA_URL},
+        {'texto': 'Aula virtual (Moodle)', 'url': MOODLE_URL},
     ]},
 ]
 
@@ -38,7 +50,7 @@ def _datos_estudiante(estudiante_id):
 
 def _cursos_del_estudiante(estudiante_id):
     return get_db().execute(
-        "SELECT c.id AS curso_id, m.nombre AS materia, m.creditos, c.grupo, c.periodo, "
+        "SELECT c.id AS curso_id, m.nombre AS materia, m.creditos, c.grupo, c.periodo, c.horario, "
         "d.nombres || ' ' || d.apellidos AS docente, j.nombre AS jornada, "
         "k.nota AS nota, ev.puntuacion AS evaluacion "
         "FROM matriculas mt "
@@ -108,3 +120,37 @@ def evaluar(curso_id):
     db.commit()
     flash('Gracias. Su calificación al docente fue registrada.', 'ok')
     return redirect(url_for('dashboard.dash_view'))
+
+
+CAMPOS_DATOS_ESTUDIANTE = ['nombres', 'apellidos', 'celular', 'telefono', 'pais', 'departamento', 'ciudad',
+                           'direccion', 'nombre_padre', 'documento_padre', 'telefono_padre',
+                           'nombre_madre', 'documento_madre', 'telefono_madre']
+OBLIGATORIOS_DATOS_ESTUDIANTE = {
+    'nombres': 'Nombres', 'apellidos': 'Apellidos', 'celular': 'Celular', 'direccion': 'Dirección',
+    'ciudad': 'Municipio', 'nombre_padre': 'Nombre del padre', 'telefono_padre': 'Contacto del padre',
+    'nombre_madre': 'Nombre de la madre', 'telefono_madre': 'Contacto de la madre',
+}
+
+
+@dashboard_bp.route('/datos', methods=['GET', 'POST'])
+@requiere_rol('estudiante')
+def datos():
+    db = get_db()
+    estudiante_id = session['persona_id']
+
+    if request.method == 'POST':
+        valores = {c: request.form.get(c, '').strip()[:120] for c in CAMPOS_DATOS_ESTUDIANTE}
+        faltan = [etiqueta for c, etiqueta in OBLIGATORIOS_DATOS_ESTUDIANTE.items() if not valores[c]]
+        if faltan:
+            flash('Complete: ' + ', '.join(faltan) + '.', 'error')
+            return redirect(url_for('dashboard.datos'))
+        db.execute('UPDATE estudiantes SET ' + ', '.join(f'{c} = ?' for c in valores) + ' WHERE id = ?',
+                   [valores[c] for c in valores] + [estudiante_id])
+        db.commit()
+        flash('Sus datos fueron actualizados.', 'ok')
+        return redirect(url_for('dashboard.datos'))
+
+    estudiante = db.execute('SELECT * FROM estudiantes WHERE id = ?', (estudiante_id,)).fetchone()
+    return render_template('panel/datos.html', estudiante=estudiante, usuario=estudiante,
+                           grupos=MENU_GRUPOS, departamentos=DEPARTAMENTOS,
+                           obligatorios=OBLIGATORIOS_DATOS_ESTUDIANTE)

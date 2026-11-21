@@ -2,6 +2,61 @@
 
 {% block title %}{{ config.titulo }}{% endblock %}
 
+{# Campos del formulario: los usan la ventana de crear y la de editar #}
+{% macro campos_form(campos, materias_opciones, seleccionadas, hoja, editando) -%}
+{% for campo in campos %}
+<label class="form-field {{ 'completo' if campo.tipo == 'textarea' }}">
+    <span>{{ campo.etiqueta }}{% if not campo.requerido %} <small>(opcional)</small>{% endif %}</span>
+    {% if campo.tipo == 'select' %}
+    <select name="{{ campo.nombre }}" {% if campo.requerido %}required{% endif %}>
+        <option value="">— Seleccione —</option>
+        {% for valor, texto in campo.opciones %}
+        <option value="{{ valor }}" {% if editando and valor == campo.valor %}selected{% endif %}>{{ texto }}</option>
+        {% endfor %}
+    </select>
+    {% elif campo.tipo == 'textarea' %}
+    <textarea name="{{ campo.nombre }}" rows="3">{{ campo.valor if editando and campo.valor is not none else '' }}</textarea>
+    {% else %}
+    <input type="{{ 'number' if campo.tipo in ('number', 'decimal') else (campo.tipo or 'text') }}"
+           name="{{ campo.nombre }}"
+           value="{{ campo.valor if editando and campo.valor is not none else '' }}"
+           placeholder="{{ campo.ejemplo or '' }}"
+           {% if campo.tipo == 'number' %}min="0" step="1"{% endif %}
+           {% if campo.tipo == 'decimal' %}min="{{ campo.minimo }}" max="{{ campo.maximo }}" step="0.1"{% endif %}
+           {% if campo.requerido %}required{% endif %}>
+    {% endif %}
+    {% if campo.ayuda %}<small class="ayuda">{{ campo.ayuda }}</small>{% endif %}
+</label>
+{% endfor %}
+
+{% if materias_opciones is not none %}
+<div class="form-field completo">
+    <span>Materias que puede dictar</span>
+    {% if materias_opciones %}
+    <div class="checks">
+        {% for valor, texto in materias_opciones %}
+        <label class="check">
+            <input type="checkbox" name="materias" value="{{ valor }}" {% if editando and valor in seleccionadas %}checked{% endif %}>
+            {{ texto }}
+        </label>
+        {% endfor %}
+    </div>
+    <small class="ayuda">Solo podrá asignarle cursos de estas materias.</small>
+    {% else %}
+    <small class="ayuda">Todavía no hay materias. Regístrelas primero en la sección Materias.</small>
+    {% endif %}
+</div>
+
+<label class="form-field completo">
+    <span>Hoja de vida <small>(opcional, .pdf o .doc, máximo 5 MB)</small></span>
+    {% if editando %}
+    <small class="ayuda">{{ 'Archivo actual: ' ~ hoja.nombre_original ~ '. Si sube otro, reemplaza este.' if hoja else 'Todavía no tiene hoja de vida.' }}</small>
+    {% endif %}
+    <input type="file" name="hoja" accept=".pdf,.doc,application/pdf,application/msword">
+</label>
+{% endif %}
+{%- endmacro %}
+
 {% block content %}
 
 <h1>{{ config.titulo }}</h1>
@@ -10,9 +65,11 @@
 <section class="bloque-admin">
     <h2 style="display:flex; align-items:center; gap:12px;">
         Registros <span class="contador">({{ filas|length }})</span>
+        {% if not config.solo_lectura %}
         <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-crear" style="margin-left:auto;">
             <i class="fa-solid fa-plus"></i> Nuevo {{ config.singular }}
         </button>
+        {% endif %}
     </h2>
 
     {% if filas %}
@@ -29,7 +86,24 @@
                 <tr>
                     {% for _, clave in config.columnas %}<td>{{ fila[clave] if fila[clave] not in (None, '') else '—' }}</td>{% endfor %}
                     <td class="col-acciones">
+                        {% if not config.solo_lectura %}
                         <a href="{{ url_for('admin.editar', entidad=entidad, registro_id=fila['id']) }}" class="boton-admin" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-pen"></i> Editar</a>
+                        {% endif %}
+                        {% if entidad == 'aspirantes' and fila['habilitado'] %}
+                        <span class="nota-resumen" style="background:var(--ok-bg); color:var(--ok);">Acceso habilitado</span>
+                        <form method="post" action="{{ url_for('admin.deshabilitar_aspirante', aspirante_id=fila['id']) }}" style="display:inline;"
+                              onsubmit="return confirm('¿Deshabilitar el acceso? El aspirante no podrá entrar a la plataforma.');">
+                            <button type="submit" class="boton-admin boton-admin-peligro" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-user-slash"></i> Deshabilitar</button>
+                        </form>
+                        {% elif entidad == 'aspirantes' and fila['cumple'] %}
+                        <form method="post" action="{{ url_for('admin.habilitar_aspirante', aspirante_id=fila['id']) }}" style="display:inline;"
+                              onsubmit="return confirm('¿Habilitar el acceso al portal de estudiante? El aspirante entrará con el mismo correo y contraseña.');">
+                            <button type="submit" class="boton-admin boton-admin-primario" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-user-check"></i> Habilitar acceso</button>
+                        </form>
+                        {% endif %}
+                        {% if entidad == 'aspirantes' %}
+                        <a href="{{ url_for('admin.documentos_aspirante', aspirante_id=fila['id']) }}" class="boton-admin" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-folder-open"></i> Documentos</a>
+                        {% endif %}
                         <form method="post" action="{{ url_for('admin.eliminar', entidad=entidad, registro_id=fila['id']) }}" style="display:inline;"
                               onsubmit="return confirm('¿Eliminar este registro? Esta acción no se puede deshacer.');">
                             <button type="submit" class="boton-admin boton-admin-peligro">Eliminar</button>
@@ -45,62 +119,46 @@
     {% endif %}
 </section>
 
+{% if not config.solo_lectura %}
+
 <!-- Ventana para crear el registro -->
-<dialog id="ventana-crear" class="dialog" aria-labelledby="titulo-crear">
+{% if not editando %}
+<dialog id="ventana-crear" class="dialog" aria-labelledby="titulo-ventana">
     <form method="post" action="{{ url_for('admin.entidad', entidad=entidad) }}" enctype="multipart/form-data">
         <div class="dialog-head">
-            <h2 id="titulo-crear"><i class="fa-solid fa-square-plus"></i>Nuevo {{ config.singular }}</h2>
+            <h2 id="titulo-ventana"><i class="fa-solid fa-square-plus"></i>Nuevo {{ config.singular }}</h2>
             <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
         </div>
-
         <div class="dialog-body">
-            {% for campo in campos %}
-            <label class="form-field {{ 'completo' if campo.tipo == 'textarea' }}">
-                <span>{{ campo.etiqueta }}{% if not campo.requerido %} <small>(opcional)</small>{% endif %}</span>
-                {% if campo.tipo == 'select' %}
-                <select name="{{ campo.nombre }}" {% if campo.requerido %}required{% endif %}>
-                    <option value="">— Seleccione —</option>
-                    {% for valor, texto in campo.opciones %}
-                    <option value="{{ valor }}">{{ texto }}</option>
-                    {% endfor %}
-                </select>
-                {% else %}
-                <input type="{{ 'number' if campo.tipo in ('number', 'decimal') else (campo.tipo or 'text') }}"
-                       name="{{ campo.nombre }}" placeholder="{{ campo.ejemplo or '' }}"
-                       {% if campo.tipo == 'number' %}min="0" step="1"{% endif %}
-                       {% if campo.tipo == 'decimal' %}min="{{ campo.minimo }}" max="{{ campo.maximo }}" step="0.1"{% endif %}
-                       {% if campo.requerido %}required{% endif %}>
-                {% endif %}
-                {% if campo.ayuda %}<small class="ayuda">{{ campo.ayuda }}</small>{% endif %}
-            </label>
-            {% endfor %}
-            {% if materias_opciones is not none %}
-            <div class="form-field completo">
-                <span>Materias que puede dictar</span>
-                {% if materias_opciones %}
-                <div class="checks">
-                    {% for valor, texto in materias_opciones %}
-                    <label class="check"><input type="checkbox" name="materias" value="{{ valor }}"> {{ texto }}</label>
-                    {% endfor %}
-                </div>
-                <small class="ayuda">Solo podrá asignarle cursos de estas materias.</small>
-                {% else %}
-                <small class="ayuda">Todavía no hay materias. Regístrelas primero en la sección Materias.</small>
-                {% endif %}
-            </div>
-
-            <label class="form-field completo">
-                <span>Hoja de vida <small>(opcional, .pdf o .doc, máximo 5 MB)</small></span>
-                <input type="file" name="hoja" accept=".pdf,.doc,application/pdf,application/msword">
-            </label>
-            {% endif %}
+            {{ campos_form(campos, materias_opciones, seleccionadas, hoja, false) }}
         </div>
-
         <div class="dialog-foot">
             <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
             <button type="submit" class="boton-admin boton-admin-primario">Guardar {{ config.singular }}</button>
         </div>
     </form>
 </dialog>
+{% endif %}
+
+<!-- Ventana para editar el registro: se abre sobre la lista -->
+{% if editando %}
+<dialog id="ventana-editar" class="dialog" aria-labelledby="titulo-ventana" data-auto-abrir>
+    <form method="post" action="{{ url_for('admin.editar', entidad=entidad, registro_id=registro_id) }}" enctype="multipart/form-data">
+        <div class="dialog-head">
+            <h2 id="titulo-ventana"><i class="fa-solid fa-pen-to-square"></i>Editar {{ config.singular }}</h2>
+            <a href="{{ url_for('admin.entidad', entidad=entidad) }}" class="dialog-cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></a>
+        </div>
+        <div class="dialog-body">
+            {{ campos_form(campos, materias_opciones, seleccionadas, hoja, true) }}
+        </div>
+        <div class="dialog-foot">
+            <a href="{{ url_for('admin.entidad', entidad=entidad) }}" class="boton-admin">Cancelar</a>
+            <button type="submit" class="boton-admin boton-admin-primario">Guardar cambios</button>
+        </div>
+    </form>
+</dialog>
+{% endif %}
+
+{% endif %}
 
 {% endblock %}

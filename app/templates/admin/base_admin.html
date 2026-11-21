@@ -1,3 +1,4 @@
+{% from '_alertas.html' import modal_errores, modal_avisos %}
 <!DOCTYPE html>
 <html lang="es">
 
@@ -64,9 +65,8 @@
 
             <main class="content">
                 {% with mensajes = get_flashed_messages(with_categories=true) %}
-                {% for categoria, mensaje in mensajes %}
-                <div class="aviso-admin aviso-{{ categoria or 'ok' }}" role="status">{{ mensaje }}</div>
-                {% endfor %}
+                {{ modal_errores(mensajes) }}
+                {{ modal_avisos(mensajes) }}
                 {% endwith %}
 
                 {% block content %}{% endblock %}

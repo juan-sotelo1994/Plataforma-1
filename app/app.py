@@ -12,13 +12,14 @@ app.config['MAX_CONTENT_LENGTH'] = 12 * 1024 * 1024  # subidas de archivos (cont
 
 
 # resgistro de las importaciones y configuraciones
-from auth import autenticar
-from dash import dashboard_bp
-from web import web_bp
-from api import api_bp
-from admin import admin_bp
-from docente import docente_bp
-from db import init_app as iniciar_base_de_datos
+from blueprints.auth import autenticar
+from blueprints.dash import dashboard_bp
+from blueprints.web import web_bp
+from blueprints.api import api_bp
+from blueprints.admin import admin_bp
+from blueprints.docente import docente_bp
+from blueprints.aspirante import aspirante_bp
+from nucleo.db import init_app as iniciar_base_de_datos
 
 
 # Registro de blueprints
@@ -28,6 +29,7 @@ app.register_blueprint(dashboard_bp)
 app.register_blueprint(api_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(docente_bp)
+app.register_blueprint(aspirante_bp)
 
 # Crea las tablas de la base de datos si todavía no existen
 iniciar_base_de_datos(app)

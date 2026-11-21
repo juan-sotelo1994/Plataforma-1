@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from circulares_data import SEDES, listar
+from servicios.circulares_data import SEDES, listar
 
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
