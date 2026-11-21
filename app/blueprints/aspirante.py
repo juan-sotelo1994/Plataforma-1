@@ -1,3 +1,4 @@
+import datetime
 import io
 import sqlite3
 
@@ -15,6 +16,9 @@ aspirante_bp = Blueprint('aspirante', __name__, url_prefix='/aspirante')
 TIPOS_DOCUMENTO = ['CÉDULA DE CIUDADANÍA', 'TARJETA DE IDENTIDAD', 'CÉDULA DE EXTRANJERÍA', 'PASAPORTE']
 SEXOS = ['Masculino', 'Femenino']
 GRADOS_ANTERIORES = ['9°', '10°', '11°']
+SI_NO = ['Sí', 'No']
+ESTADOS_CIVILES = ['Soltero(a)', 'Casado(a)', 'Unión libre', 'Divorciado(a)', 'Viudo(a)']
+TIPOS_SANGRE = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-']
 MAX_HERMANOS = 15
 
 # Pestañas del formulario
@@ -42,6 +46,13 @@ PASOS = {
         ('direccion', 'Dirección', True),
         ('telefono', 'Teléfono', False),
         ('celular', 'Celular', True),
+        ('fecha_nacimiento', 'Fecha de nacimiento', True),
+        ('estado_civil', 'Estado civil', True),
+        ('tipo_sangre', 'Tipo de sangre', True),
+        ('lugar_expedicion', 'Lugar de expedición del documento', True),
+        ('fecha_expedicion', 'Fecha de expedición del documento', True),
+        ('tiene_discapacidad', '¿Tiene alguna discapacidad?', True),
+        ('discapacidad', 'Especifique la discapacidad', False),
     ],
     PASO_PADRES: [
         ('nombre_padre', 'Nombre completo del padre', True),
@@ -84,13 +95,31 @@ def _datos_aspirante(aspirante_id, con_prefill=True):
     return datos
 
 
+CERTIFICADO_DISCAPACIDAD = 'Certificado de discapacidad'
+
+
 def _requisitos_con_documento(aspirante_id):
-    return get_db().execute(
-        "SELECT r.id, r.nombre, r.descripcion, r.obligatorio, r.formatos, r.seccion, "
-        "d.nombre_original, d.nombre_archivo, d.estado, d.observacion "
-        "FROM requisitos r "
-        "LEFT JOIN documentos_aspirante d ON d.requisito_id = r.id AND d.aspirante_id = ? "
-        "WHERE r.activo = 1 ORDER BY r.id", (aspirante_id,)).fetchall()
+    """Requisitos activos con el documento de cada aspirante.
+
+    El certificado de discapacidad solo aplica, y es obligatorio, si el aspirante respondió Sí.
+    """
+    db = get_db()
+    fila = db.execute('SELECT tiene_discapacidad FROM aspirantes WHERE id = ?', (aspirante_id,)).fetchone()
+    tiene_discapacidad = fila is not None and fila['tiene_discapacidad'] == 'Sí'
+    requisitos = []
+    for requisito in db.execute(
+            "SELECT r.id, r.nombre, r.descripcion, r.obligatorio, r.formatos, r.seccion, "
+            "d.nombre_original, d.nombre_archivo, d.estado, d.observacion "
+            "FROM requisitos r "
+            "LEFT JOIN documentos_aspirante d ON d.requisito_id = r.id AND d.aspirante_id = ? "
+            "WHERE r.activo = 1 ORDER BY r.id", (aspirante_id,)).fetchall():
+        if requisito['nombre'] == CERTIFICADO_DISCAPACIDAD:
+            if not tiene_discapacidad:
+                continue
+            requisito = dict(requisito)
+            requisito['obligatorio'] = 1
+        requisitos.append(requisito)
+    return requisitos
 
 
 def _de_documentos(requisitos):
@@ -164,6 +193,7 @@ def inicio():
         'aspirante/inicio.html', aspirante=aspirante, paso=paso, titulo_paso=TITULOS_PASOS[paso],
         campos=PASOS.get(paso, []), requisitos=requisitos_paso, tipos_documento=TIPOS_DOCUMENTO,
         sexos=SEXOS, departamentos=DEPARTAMENTOS, grados_anteriores=GRADOS_ANTERIORES,
+        estados_civiles=ESTADOS_CIVILES, tipos_sangre=TIPOS_SANGRE, si_no=SI_NO,
         completos=completos, faltan=faltan, PASO_DOCUMENTOS=PASO_DOCUMENTOS, PASO_ACADEMICO=PASO_ACADEMICO,
         todo_completo=all(completos.values()), descargar=request.args.get('completo') == '1')
 
@@ -200,6 +230,19 @@ def _validar_aspirante(valores):
         return 'Seleccione el tipo de identificación y el sexo de la lista.'
     if valores['departamento'] not in DEPARTAMENTOS:
         return 'Seleccione el departamento de la lista.'
+    if valores['estado_civil'] not in ESTADOS_CIVILES or valores['tipo_sangre'] not in TIPOS_SANGRE:
+        return 'Seleccione el estado civil y el tipo de sangre de la lista.'
+    if valores['tiene_discapacidad'] not in SI_NO:
+        return 'Responda si tiene alguna discapacidad.'
+    if valores['tiene_discapacidad'] == 'Sí' and not valores['discapacidad']:
+        return 'Especifique la discapacidad.'
+    if valores['tiene_discapacidad'] == 'No':
+        valores['discapacidad'] = ''
+    for columna, etiqueta in (('fecha_nacimiento', 'de nacimiento'), ('fecha_expedicion', 'de expedición del documento')):
+        try:
+            datetime.date.fromisoformat(valores[columna])
+        except ValueError:
+            return f'Escriba una fecha {etiqueta} válida.'
     return None
 
 

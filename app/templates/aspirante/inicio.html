@@ -1,4 +1,4 @@
-{% from '_alertas.html' import modal_errores, modal_avisos %}
+{% from '_alertas.html' import modal_errores, modal_avisos, calendario_js %}
 <!DOCTYPE html>
 <html lang="es">
 
@@ -259,6 +259,29 @@
                                 <option value="{{ sexo }}" {% if aspirante.sexo == sexo %}selected{% endif %}>{{ sexo }}</option>
                                 {% endfor %}
                             </select>
+                            {% elif columna == 'estado_civil' %}
+                            <select name="estado_civil" required>
+                                <option value="">— Seleccione —</option>
+                                {% for estado in estados_civiles %}
+                                <option value="{{ estado }}" {% if aspirante.estado_civil == estado %}selected{% endif %}>{{ estado }}</option>
+                                {% endfor %}
+                            </select>
+                            {% elif columna == 'tipo_sangre' %}
+                            <select name="tipo_sangre" required>
+                                <option value="">— Seleccione —</option>
+                                {% for tipo in tipos_sangre %}
+                                <option value="{{ tipo }}" {% if aspirante.tipo_sangre == tipo %}selected{% endif %}>{{ tipo }}</option>
+                                {% endfor %}
+                            </select>
+                            {% elif columna == 'tiene_discapacidad' %}
+                            <select name="tiene_discapacidad" required>
+                                <option value="">— Seleccione —</option>
+                                {% for opcion in si_no %}
+                                <option value="{{ opcion }}" {% if aspirante.tiene_discapacidad == opcion %}selected{% endif %}>{{ opcion }}</option>
+                                {% endfor %}
+                            </select>
+                            {% elif columna in ('fecha_nacimiento', 'fecha_expedicion') %}
+                            <input type="date" name="{{ columna }}" value="{{ aspirante[columna] or '' }}" {% if obligatorio %}required{% endif %}>
                             {% else %}
                             <input type="{{ 'tel' if 'telefono' in columna or columna == 'celular' else 'text' }}" name="{{ columna }}"
                                    value="{{ aspirante[columna] or ('Colombia' if columna == 'pais' else '') }}" {% if obligatorio %}required{% endif %}>
@@ -338,6 +361,7 @@
             </footer>
         </div>
     </div>
+    {{ calendario_js() }}
     <script src="{{ url_for('static', filename='js/panel.js') }}" defer></script>
 </body>
 

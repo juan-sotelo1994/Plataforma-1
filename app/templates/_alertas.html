@@ -76,3 +76,59 @@
 </script>
 {% endif %}
 {%- endmacro %}
+
+{# Calendario propio (flatpickr) para los campos de fecha, en español y con los colores del portal #}
+{% macro calendario_js() -%}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+<style>
+    .flatpickr-calendar { font-family: Inter, system-ui, sans-serif; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 12px 32px rgba(15, 23, 42, .18); }
+    .flatpickr-current-month { font-size: 15px; font-weight: 600; color: #0f172a; }
+    .flatpickr-current-month input.cur-year { font-weight: 600; }
+    .flatpickr-weekday { color: #64748b; font-weight: 600; }
+    .flatpickr-day { border-radius: 8px; color: #0f172a; border-color: transparent; }
+    .flatpickr-day:hover, .flatpickr-day:focus { background: #eef2ff; border-color: #eef2ff; }
+    .flatpickr-day.today { border-color: #1e3a8a; }
+    .flatpickr-day.selected, .flatpickr-day.selected:hover { background: #1e3a8a; border-color: #1e3a8a; color: #fff; }
+    .flatpickr-months .flatpickr-prev-month, .flatpickr-months .flatpickr-next-month { color: #1e3a8a; fill: #1e3a8a; }
+    .flatpickr-months .flatpickr-prev-month:hover svg, .flatpickr-months .flatpickr-next-month:hover svg { fill: #1e40af; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/es.js"></script>
+<script>
+    // Cada campo de fecha muestra el calendario propio; el valor se sigue guardando como AAAA-MM-DD
+    // El año se elige de una lista que llega solo hasta el año actual
+    function listaDeAnios(cal) {
+        var envoltura = cal.currentYearElement.parentNode;
+        var lista = document.createElement('select');
+        lista.className = 'flatpickr-monthDropdown-months';
+        var anioActual = new Date().getFullYear();
+        for (var anio = anioActual; anio >= 1950; anio--) {
+            var opcion = document.createElement('option');
+            opcion.value = anio;
+            opcion.textContent = anio;
+            lista.appendChild(opcion);
+        }
+        lista.value = cal.currentYear;
+        lista.addEventListener('change', function () {
+            cal.jumpToDate(new Date(parseInt(lista.value, 10), cal.currentMonth, 1));
+        });
+        envoltura.style.display = 'none';
+        envoltura.parentNode.insertBefore(lista, envoltura);
+        cal.listaAnios = lista;
+    }
+
+    document.querySelectorAll('input[type="date"]').forEach(function (campo) {
+        var requerido = campo.required;
+        campo.type = 'text';
+        var selector = flatpickr(campo, {
+            locale: 'es', altInput: true, altFormat: 'd/m/Y', dateFormat: 'Y-m-d', allowInput: false,
+            minDate: '1950-01-01', maxDate: 'today',
+            onReady: function (fechas, texto, cal) { listaDeAnios(cal); },
+            onYearChange: function (fechas, texto, cal) { if (cal.listaAnios) cal.listaAnios.value = cal.currentYear; },
+            onMonthChange: function (fechas, texto, cal) { if (cal.listaAnios) cal.listaAnios.value = cal.currentYear; }
+        });
+        // El campo original queda oculto: la obligatoriedad se pasa al que ve la persona
+        if (selector.altInput) selector.altInput.required = requerido;
+    });
+</script>
+{%- endmacro %}
