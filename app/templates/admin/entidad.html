@@ -3,7 +3,7 @@
 {% block title %}{{ config.titulo }}{% endblock %}
 
 {# Campos del formulario: los usan la ventana de crear y la de editar #}
-{% macro campos_form(campos, materias_opciones, seleccionadas, hoja, editando) -%}
+{% macro campos_form(campos, materias_opciones, seleccionadas, editando) -%}
 {% for campo in campos if not (editando and campo.no_columna) %}
 <label class="form-field {{ 'completo' if campo.tipo == 'textarea' }}">
     <span>{{ campo.etiqueta }}{% if not campo.requerido %} <small>(opcional)</small>{% endif %}</span>
@@ -46,14 +46,6 @@
     <small class="ayuda">Todavía no hay materias. Regístrelas primero en la sección Materias.</small>
     {% endif %}
 </div>
-
-<label class="form-field completo">
-    <span>Hoja de vida <small>(opcional, .pdf o .doc, máximo 5 MB)</small></span>
-    {% if editando %}
-    <small class="ayuda">{{ 'Archivo actual: ' ~ hoja.nombre_original ~ '. Si sube otro, reemplaza este.' if hoja else 'Todavía no tiene hoja de vida.' }}</small>
-    {% endif %}
-    <input type="file" name="hoja" accept=".pdf,.doc,application/pdf,application/msword">
-</label>
 {% endif %}
 {%- endmacro %}
 
@@ -92,12 +84,19 @@
                         {% if entidad == 'aspirantes' and fila['habilitado'] %}
                         <span class="nota-resumen" style="background:var(--ok-bg); color:var(--ok);">Acceso habilitado</span>
                         <form method="post" action="{{ url_for('admin.deshabilitar_aspirante', aspirante_id=fila['id']) }}" style="display:inline;"
-                              onsubmit="return confirm('¿Deshabilitar el acceso? El aspirante no podrá entrar a la plataforma.');">
+                              data-confirmar="El aspirante no podrá entrar a la plataforma hasta que vuelva a habilitarlo."
+                              data-confirmar-titulo="¿Deshabilitar el acceso?"
+                              data-confirmar-icono="warning"
+                              data-confirmar-boton="Sí, deshabilitar"
+                              data-confirmar-color="#cc3333">
                             <button type="submit" class="boton-admin boton-admin-peligro" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-user-slash"></i> Deshabilitar</button>
                         </form>
                         {% elif entidad == 'aspirantes' and fila['cumple'] %}
                         <form method="post" action="{{ url_for('admin.habilitar_aspirante', aspirante_id=fila['id']) }}" style="display:inline;"
-                              onsubmit="return confirm('¿Habilitar el acceso al portal de estudiante? El aspirante entrará con el mismo correo y contraseña.');">
+                              data-confirmar="El aspirante entrará al portal de estudiante con el mismo correo y contraseña."
+                              data-confirmar-titulo="¿Habilitar el acceso al portal?"
+                              data-confirmar-boton="Sí, habilitar"
+                              data-confirmar-color="#43a047">
                             <button type="submit" class="boton-admin boton-admin-primario" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-user-check"></i> Habilitar acceso</button>
                         </form>
                         {% endif %}
@@ -108,7 +107,11 @@
                         <a href="{{ url_for('admin.documentos_aspirante', aspirante_id=fila['id']) }}" class="boton-admin" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-folder-open"></i> Documentos</a>
                         {% endif %}
                         <form method="post" action="{{ url_for('admin.eliminar', entidad=entidad, registro_id=fila['id']) }}" style="display:inline;"
-                              onsubmit="return confirm('¿Eliminar este registro? Esta acción no se puede deshacer.');">
+                              data-confirmar="Este registro se eliminará permanentemente. Esta acción no se puede deshacer."
+                              data-confirmar-titulo="¿Eliminar este registro?"
+                              data-confirmar-icono="warning"
+                              data-confirmar-boton="Sí, eliminar"
+                              data-confirmar-color="#cc3333">
                             <button type="submit" class="boton-admin boton-admin-peligro">Eliminar</button>
                         </form>
                     </td>
@@ -125,7 +128,9 @@
 {% if not config.solo_lectura %}
 
 <!-- Ventana para crear el registro -->
-{% if not editando %}
+{% if not editando and entidad == 'cursos' %}
+{% include 'admin/_nuevo_curso.html' %}
+{% elif not editando %}
 <dialog id="ventana-crear" class="dialog" aria-labelledby="titulo-ventana">
     <form method="post" action="{{ url_for('admin.entidad', entidad=entidad) }}" enctype="multipart/form-data">
         <div class="dialog-head">
@@ -133,7 +138,7 @@
             <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="dialog-body">
-            {{ campos_form(campos, materias_opciones, seleccionadas, hoja, false) }}
+            {{ campos_form(campos, materias_opciones, seleccionadas, false) }}
         </div>
         <div class="dialog-foot">
             <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
@@ -146,13 +151,17 @@
 <!-- Ventana para editar el registro: se abre sobre la lista -->
 {% if editando %}
 <dialog id="ventana-editar" class="dialog" aria-labelledby="titulo-ventana" data-auto-abrir>
-    <form method="post" action="{{ url_for('admin.editar', entidad=entidad, registro_id=registro_id) }}" enctype="multipart/form-data">
+    <form method="post" action="{{ url_for('admin.editar', entidad=entidad, registro_id=registro_id) }}" enctype="multipart/form-data"
+          data-confirmar="Se actualizarán los datos de este registro."
+          data-confirmar-titulo="¿Guardar los cambios?"
+          data-confirmar-boton="Sí, guardar"
+          data-confirmar-color="#1e3a8a">
         <div class="dialog-head">
             <h2 id="titulo-ventana"><i class="fa-solid fa-pen-to-square"></i>Editar {{ config.singular }}</h2>
             <a href="{{ url_for('admin.entidad', entidad=entidad) }}" class="dialog-cerrar" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></a>
         </div>
         <div class="dialog-body">
-            {{ campos_form(campos, materias_opciones, seleccionadas, hoja, true) }}
+            {{ campos_form(campos, materias_opciones, seleccionadas, true) }}
         </div>
         <div class="dialog-foot">
             <a href="{{ url_for('admin.entidad', entidad=entidad) }}" class="boton-admin">Cancelar</a>

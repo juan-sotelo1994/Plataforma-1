@@ -1,0 +1,119 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block title %}Curso {{ grupo.grupo }}{% endblock %}
+
+{% block content %}
+
+<p><a href="{{ url_for('admin.vista_ciclo', ciclo=grupo.ciclo if grupo.ciclo else 'sin') }}">← Volver al ciclo</a></p>
+
+<h1>Curso {{ grupo.grupo }}</h1>
+<p>Ciclo {{ grupo.ciclo or 'sin asignar' }} · Periodo {{ grupo.periodo }} · Jornada {{ grupo.jornada }} · Cupo {{ grupo.cupo }}{% if grupo.horario %} · {{ grupo.horario }}{% endif %}</p>
+
+<section class="bloque-admin">
+    <h2 style="display:flex; align-items:center; gap:12px;">
+        Materias del curso <span class="contador">({{ materias|length }})</span>
+        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-materia" style="margin-left:auto;">
+            <i class="fa-solid fa-plus"></i> Agregar materias
+        </button>
+    </h2>
+
+    {% if materias %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Materia</th>
+                    <th scope="col">Docente</th>
+                    <th scope="col">Estudiantes</th>
+                    <th scope="col" class="col-acciones">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for materia in materias %}
+                <tr>
+                    <td>{{ materia.materia }} <small class="contador">({{ materia.codigo }})</small></td>
+                    <td>{{ materia.docente }}</td>
+                    <td>{{ materia.estudiantes }}</td>
+                    <td class="col-acciones">
+                        <a href="{{ url_for('admin.editar', entidad='cursos', registro_id=materia.id) }}" class="boton-admin" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-pen"></i> Asignar docente</a>
+                        <form method="post" action="{{ url_for('admin.eliminar', entidad='cursos', registro_id=materia.id) }}" style="display:inline;"
+                              data-confirmar="Esta materia se quitará del curso. Esta acción no se puede deshacer."
+                              data-confirmar-titulo="¿Quitar esta materia?"
+                              data-confirmar-icono="warning"
+                              data-confirmar-boton="Sí, quitar"
+                              data-confirmar-color="#cc3333">
+                            <button type="submit" class="boton-admin boton-admin-peligro">Quitar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">Este curso todavía no tiene materias. Use «Agregar materias».</p>
+    {% endif %}
+</section>
+
+<section class="bloque-admin">
+    <h2 style="display:flex; align-items:center; gap:12px;">
+        Estudiantes del curso <span class="contador">({{ estudiantes|length }})</span>
+        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-estudiantes" style="margin-left:auto;">
+            <i class="fa-solid fa-user-plus"></i> Agregar estudiantes
+        </button>
+    </h2>
+
+    {% if estudiantes %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Código</th>
+                    <th scope="col">Estudiante</th>
+                    <th scope="col">Documento</th>
+                    <th scope="col" class="col-acciones">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for estudiante in estudiantes %}
+                <tr>
+                    <td>{{ estudiante.codigo }}</td>
+                    <td>{{ estudiante.nombre }}</td>
+                    <td>{{ estudiante.documento }}</td>
+                    <td class="col-acciones">
+                        <form method="post" action="{{ url_for('admin.quitar_estudiante', grupo_id=grupo.id, estudiante_id=estudiante.id) }}" style="display:inline;"
+                              data-confirmar="El estudiante saldrá de todas las materias de este curso."
+                              data-confirmar-titulo="¿Quitar este estudiante?"
+                              data-confirmar-icono="warning"
+                              data-confirmar-boton="Sí, quitar"
+                              data-confirmar-color="#cc3333">
+                            <button type="submit" class="boton-admin boton-admin-peligro">Quitar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">Todavía no hay estudiantes matriculados en este curso. Use «Agregar estudiantes».</p>
+    {% endif %}
+</section>
+
+<section class="bloque-admin">
+    <h2>Eliminar curso</h2>
+    <p class="contador">Solo se puede eliminar un curso sin materias. Primero quite sus materias.</p>
+    <form method="post" action="{{ url_for('admin.eliminar_grupo', grupo_id=grupo.id) }}" style="margin-top:10px;"
+          data-confirmar="El curso se eliminará permanentemente. Esta acción no se puede deshacer."
+          data-confirmar-titulo="¿Eliminar este curso?"
+          data-confirmar-icono="warning"
+          data-confirmar-boton="Sí, eliminar"
+          data-confirmar-color="#cc3333">
+        <button type="submit" class="boton-admin boton-admin-peligro">Eliminar curso</button>
+    </form>
+</section>
+
+{% include 'admin/_agregar_materia.html' %}
+{% include 'admin/_agregar_estudiantes.html' %}
+
+{% endblock %}

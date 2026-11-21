@@ -6,11 +6,11 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, s
 from werkzeug.security import generate_password_hash
 
 from nucleo.db import get_db
+from servicios import notas
 from servicios.documentos import DOCS_DIR
 from servicios.comprobante import generar_comprobante
 from servicios import documentos_docente as docs_docente
 from servicios import hojas as hojas_mod
-from servicios.hojas import guardar_hoja
 from nucleo.seguridad import requiere_rol
 
 
@@ -76,28 +76,18 @@ ENTIDADES = {
         'titulo': 'Cursos',
         'singular': 'curso',
         'tabla': 'cursos',
-        'consulta': ("SELECT c.id, m.nombre AS materia, c.grupo, c.periodo, c.horario, "
-                     "d.nombres || ' ' || d.apellidos AS docente, j.nombre AS jornada, c.cupo "
+        'consulta': ("SELECT c.id, m.nombre AS materia, c.ciclo, c.grupo, c.periodo, c.horario, "
+                     "COALESCE(d.nombres || ' ' || d.apellidos, 'Sin asignar') AS docente, j.nombre AS jornada, c.cupo "
                      "FROM cursos c "
                      "JOIN materias m ON m.id = c.materia_id "
-                     "JOIN docentes d ON d.id = c.docente_id "
+                     "LEFT JOIN docentes d ON d.id = c.docente_id "
                      "JOIN jornadas j ON j.id = c.jornada_id "
-                     "ORDER BY c.periodo DESC, m.nombre, c.grupo"),
-        'columnas': [('Materia', 'materia'), ('Grupo', 'grupo'), ('Periodo', 'periodo'),
+                     "ORDER BY c.periodo DESC, c.ciclo, m.nombre, c.grupo"),
+        'columnas': [('Materia', 'materia'), ('Ciclo', 'ciclo'), ('Grupo', 'grupo'), ('Periodo', 'periodo'),
                      ('Docente', 'docente'), ('Jornada', 'jornada'), ('Horario', 'horario'), ('Cupo', 'cupo')],
         'campos': [
             {'nombre': 'materia_id', 'etiqueta': 'Materia', 'tipo': 'select', 'requerido': True,
              'opciones_sql': 'SELECT id, nombre || \' (\' || codigo || \')\' AS texto FROM materias ORDER BY nombre'},
-            {'nombre': 'docente_id', 'etiqueta': 'Docente', 'tipo': 'select', 'requerido': True,
-             'opciones_sql': ("SELECT id, nombres || ' ' || apellidos AS texto "
-                              "FROM docentes ORDER BY apellidos, nombres")},
-            {'nombre': 'jornada_id', 'etiqueta': 'Jornada', 'tipo': 'select', 'requerido': True,
-             'opciones_sql': 'SELECT id, nombre AS texto FROM jornadas ORDER BY nombre'},
-            {'nombre': 'periodo', 'etiqueta': 'Periodo', 'requerido': True, 'ejemplo': '2026-B'},
-            {'nombre': 'grupo', 'etiqueta': 'Grupo', 'requerido': True, 'ejemplo': '01'},
-            {'nombre': 'horario', 'etiqueta': 'Horario', 'ejemplo': 'Lun y mié 6:00 a. m. – 8:00 a. m.',
-             'ayuda': 'Días y horas en que se dicta el curso.'},
-            {'nombre': 'cupo', 'etiqueta': 'Cupo', 'tipo': 'number', 'ejemplo': '30'},
         ],
     },
     'estudiantes': {
@@ -125,6 +115,7 @@ ENTIDADES = {
         'titulo': 'Calificaciones',
         'singular': 'calificación',
         'tabla': 'calificaciones',
+        'solo_lectura': True,  # las notas se registran desde la vista por cursos
         'consulta': ("SELECT k.id, m.nombre AS materia, c.grupo, c.periodo, "
                      "e.nombres || ' ' || e.apellidos AS estudiante, k.nota "
                      "FROM calificaciones k "
@@ -152,12 +143,12 @@ ENTIDADES = {
         'tabla': 'matriculas',
         'consulta': ("SELECT mt.id, e.codigo, e.apellidos || ' ' || e.nombres AS estudiante, "
                      "m.nombre AS materia, c.grupo, c.periodo, "
-                     "d.nombres || ' ' || d.apellidos AS docente "
+                     "COALESCE(d.nombres || ' ' || d.apellidos, 'Sin asignar') AS docente "
                      "FROM matriculas mt "
                      "JOIN estudiantes e ON e.id = mt.estudiante_id "
                      "JOIN cursos c ON c.id = mt.curso_id "
                      "JOIN materias m ON m.id = c.materia_id "
-                     "JOIN docentes d ON d.id = c.docente_id "
+                     "LEFT JOIN docentes d ON d.id = c.docente_id "
                      "ORDER BY c.periodo DESC, m.nombre, e.apellidos"),
         'columnas': [('Código', 'codigo'), ('Estudiante', 'estudiante'), ('Materia', 'materia'),
                      ('Grupo', 'grupo'), ('Periodo', 'periodo'), ('Docente', 'docente')],
@@ -233,12 +224,12 @@ ROLES_CUENTA = {
 # Ranking de cursos por promedio de notas. Solo cuentan los cursos con al menos una nota.
 CONSULTA_RANKING = """
 SELECT c.id, m.nombre AS materia, c.grupo, c.periodo,
-       d.nombres || ' ' || d.apellidos AS docente,
+       COALESCE(d.nombres || ' ' || d.apellidos, 'Sin asignar') AS docente,
        AVG(k.nota) AS promedio, COUNT(k.id) AS evaluados
 FROM calificaciones k
 JOIN cursos c ON c.id = k.curso_id
 JOIN materias m ON m.id = c.materia_id
-JOIN docentes d ON d.id = c.docente_id
+LEFT JOIN docentes d ON d.id = c.docente_id
 GROUP BY c.id
 ORDER BY promedio DESC, m.nombre
 """
@@ -328,19 +319,13 @@ def _docente_puede_dictar(docente_id, materia_id):
 
 
 def _guardar_extras_docente(docente_id):
-    """Guarda las materias habilitadas y la hoja de vida que vienen en el formulario de docente."""
+    """Guarda las materias habilitadas que vienen en el formulario de docente."""
     db = get_db()
     for materia in request.form.getlist('materias'):
         if materia.isdigit():
             db.execute('INSERT OR IGNORE INTO docente_materias (docente_id, materia_id) VALUES (?, ?)',
                        (docente_id, int(materia)))
     db.commit()
-
-    archivo = request.files.get('hoja')
-    if archivo is not None and archivo.filename:
-        ok, mensaje = guardar_hoja(docente_id, archivo)
-        if not ok:
-            flash(f'El docente se guardó, pero la hoja de vida no: {mensaje}', 'error')
 
 
 @admin_bp.route('/')
@@ -361,13 +346,14 @@ def inicio():
 def entidad(entidad):
     config = _config(entidad)
     db = get_db()
-    if config.get('solo_lectura') and request.method == 'POST':
+    # Los cursos se crean desde su propia página (con las materias marcadas), no desde este formulario
+    if (config.get('solo_lectura') or entidad == 'cursos') and request.method == 'POST':
         abort(405)
 
     if request.method == 'POST':
         try:
             valores = _valores_del_formulario(config)
-            if entidad == 'cursos' and not _docente_puede_dictar(valores['docente_id'], valores['materia_id']):
+            if entidad == 'cursos' and valores.get('docente_id') and not _docente_puede_dictar(valores['docente_id'], valores['materia_id']):
                 raise ValueError('Ese docente no está habilitado para dictar esa materia. '
                                  'Revise las materias que puede dictar en su registro.')
             clave = request.form.get('contrasena', '')
@@ -396,6 +382,11 @@ def entidad(entidad):
                   'repetidos y que las relaciones seleccionadas existan.', 'error')
         return redirect(url_for('admin.entidad', entidad=entidad))
 
+    if entidad == 'cursos':
+        return _vista_ciclos()
+    if entidad == 'calificaciones':
+        return _vista_calificaciones()
+
     filas = db.execute(config['consulta']).fetchall()
     campos = []
     for campo in config['campos']:
@@ -405,10 +396,323 @@ def entidad(entidad):
         campos.append(campo)
 
     materias_opciones = None
+    datos_extra = _datos_nuevo_curso() if entidad == 'cursos' else {}
     return render_template('admin/entidad.html', entidad=entidad, config=config,
                            filas=filas, campos=campos, entidades=ENTIDADES,
                            materias_opciones=materias_opciones, seleccionadas=set(),
-                           hoja=None, editando=False, registro_id=None)
+                           editando=False, registro_id=None, **datos_extra)
+
+
+CICLOS_PLAN = ('1', '2', '3', '4', '5', '6')
+
+
+def _datos_nuevo_curso():
+    """Materias con sus docentes habilitados, para agregar materias a un curso; y jornadas y ciclos."""
+    db = get_db()
+    materias_json = []
+    for materia in db.execute('SELECT id, nombre, codigo FROM materias ORDER BY nombre').fetchall():
+        docentes = db.execute(
+            "SELECT d.id, d.nombres || ' ' || d.apellidos AS texto FROM docentes d "
+            "JOIN docente_materias dm ON dm.docente_id = d.id "
+            "WHERE dm.materia_id = ? ORDER BY d.apellidos, d.nombres", (materia['id'],)).fetchall()
+        materias_json.append({'id': materia['id'], 'nombre': materia['nombre'], 'codigo': materia['codigo'],
+                              'docentes': [{'id': d['id'], 'texto': d['texto']} for d in docentes]})
+    jornadas = db.execute('SELECT id, nombre FROM jornadas ORDER BY nombre').fetchall()
+    return {'materias_json': materias_json, 'jornadas': jornadas, 'ciclos': CICLOS_PLAN}
+
+
+def _vista_ciclos():
+    """Lista de ciclos (1 a 6) con cuántos cursos y materias tiene cada uno."""
+    db = get_db()
+    grupos = {fila['ciclo']: fila['grupos'] for fila in db.execute(
+        'SELECT ciclo, COUNT(*) AS grupos FROM grupos_curso GROUP BY ciclo').fetchall()}
+    materias = {fila['ciclo']: fila['materias'] for fila in db.execute(
+        'SELECT g.ciclo, COUNT(c.id) AS materias FROM grupos_curso g '
+        'LEFT JOIN cursos c ON c.grupo_id = g.id GROUP BY g.ciclo').fetchall()}
+    tarjetas = [{'numero': n, 'cursos': grupos.get(n, 0), 'materias': materias.get(n, 0)} for n in range(1, 7)]
+    return render_template('admin/cursos_ciclos.html', tarjetas=tarjetas, sin_ciclo=grupos.get(None),
+                           entidad='cursos', entidades=ENTIDADES, preseleccion=None, **_datos_nuevo_curso())
+
+
+@admin_bp.route('/cursos/nuevo', methods=['GET', 'POST'])
+@requiere_admin
+def nuevo_curso():
+    """Crea el curso de un ciclo (grupo, periodo y jornada). Sus materias se agregan después."""
+    if request.method == 'GET':
+        return redirect(url_for('admin.entidad', entidad='cursos'))
+    db = get_db()
+    ciclo = request.form.get('ciclo', '')
+    letra = request.form.get('grupo', '').strip().upper()
+    periodo = request.form.get('periodo', '').strip()
+    jornada_id = request.form.get('jornada_id', '')
+    horario = request.form.get('horario', '').strip() or None
+    cupo = request.form.get('cupo', '').strip() or '0'
+    try:
+        if ciclo not in CICLOS_PLAN:
+            raise ValueError('Seleccione el ciclo (del 1 al 6).')
+        if not letra:
+            raise ValueError('Escriba la letra del grupo, por ejemplo A.')
+        if not periodo:
+            raise ValueError('Escriba el periodo, por ejemplo 2026-B.')
+        if not jornada_id.isdigit():
+            raise ValueError('Seleccione la jornada.')
+        if not cupo.isdigit():
+            raise ValueError('El cupo debe ser un número entero.')
+        grupo = f'{ciclo}{letra}'
+        cursor = db.execute(
+            'INSERT INTO grupos_curso (ciclo, grupo, periodo, jornada_id, horario, cupo) VALUES (?, ?, ?, ?, ?, ?)',
+            (int(ciclo), grupo, periodo, int(jornada_id), horario, int(cupo)))
+        db.commit()
+        flash(f'Curso {grupo} creado para el periodo {periodo}. Ahora agregue sus materias.', 'ok')
+        return redirect(url_for('admin.curso_grupo', grupo_id=cursor.lastrowid))
+    except ValueError as error:
+        db.rollback()
+        flash(str(error), 'error')
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash(f'Ya existe el curso {ciclo}{letra} en el periodo {periodo}. Use otra letra de grupo.', 'error')
+    destino = url_for('admin.vista_ciclo', ciclo=ciclo) if ciclo in CICLOS_PLAN else url_for('admin.entidad', entidad='cursos')
+    return redirect(destino)
+
+
+@admin_bp.route('/cursos/ciclo/<ciclo>')
+@requiere_admin
+def vista_ciclo(ciclo):
+    """Cursos de un ciclo. «sin» muestra los que todavía no tienen ciclo."""
+    if ciclo not in CICLOS_PLAN and ciclo != 'sin':
+        abort(404)
+    condicion, parametros = ('g.ciclo IS NULL', ()) if ciclo == 'sin' else ('g.ciclo = ?', (int(ciclo),))
+    grupos = get_db().execute(
+        "SELECT g.id, g.grupo, g.periodo, g.horario, g.cupo, j.nombre AS jornada, "
+        "(SELECT COUNT(*) FROM cursos c WHERE c.grupo_id = g.id) AS materias "
+        "FROM grupos_curso g JOIN jornadas j ON j.id = g.jornada_id "
+        f"WHERE {condicion} ORDER BY g.periodo DESC, g.grupo", parametros).fetchall()
+    return render_template('admin/cursos_ciclo.html', ciclo=ciclo, grupos=grupos, entidad='cursos',
+                           entidades=ENTIDADES, preseleccion=None if ciclo == 'sin' else ciclo,
+                           **_datos_nuevo_curso())
+
+
+@admin_bp.route('/cursos/grupo/<int:grupo_id>')
+@requiere_admin
+def curso_grupo(grupo_id):
+    """Un curso con sus materias y sus docentes."""
+    db = get_db()
+    grupo = db.execute(
+        "SELECT g.id, g.ciclo, g.grupo, g.periodo, g.horario, g.cupo, j.nombre AS jornada "
+        "FROM grupos_curso g JOIN jornadas j ON j.id = g.jornada_id WHERE g.id = ?", (grupo_id,)).fetchone()
+    if grupo is None:
+        abort(404)
+    materias = db.execute(
+        "SELECT c.id, m.nombre AS materia, m.codigo, "
+        "COALESCE(d.nombres || ' ' || d.apellidos, 'Sin asignar') AS docente, "
+        "(SELECT COUNT(*) FROM matriculas mt WHERE mt.curso_id = c.id) AS estudiantes "
+        "FROM cursos c JOIN materias m ON m.id = c.materia_id "
+        "LEFT JOIN docentes d ON d.id = c.docente_id "
+        "WHERE c.grupo_id = ? ORDER BY m.nombre", (grupo_id,)).fetchall()
+    estudiantes = db.execute(
+        "SELECT DISTINCT e.id, e.codigo, e.documento, e.apellidos || ' ' || e.nombres AS nombre "
+        "FROM matriculas mt JOIN cursos c ON c.id = mt.curso_id "
+        "JOIN estudiantes e ON e.id = mt.estudiante_id "
+        "WHERE c.grupo_id = ? ORDER BY e.apellidos, e.nombres", (grupo_id,)).fetchall()
+    # Estudiantes que todavía no están en este curso, para la ventana de matrícula
+    disponibles = db.execute(
+        "SELECT e.id, e.codigo, e.documento, e.apellidos || ' ' || e.nombres AS nombre FROM estudiantes e "
+        "WHERE e.id NOT IN (SELECT mt.estudiante_id FROM matriculas mt JOIN cursos c ON c.id = mt.curso_id "
+        "WHERE c.grupo_id = ?) ORDER BY e.apellidos, e.nombres", (grupo_id,)).fetchall()
+    estudiantes_json = [{'id': e['id'], 'codigo': e['codigo'], 'documento': e['documento'], 'nombre': e['nombre']}
+                        for e in disponibles]
+    return render_template('admin/curso_grupo.html', grupo=grupo, materias=materias, estudiantes=estudiantes,
+                           estudiantes_json=estudiantes_json, entidad='cursos', entidades=ENTIDADES,
+                           **_datos_nuevo_curso())
+
+
+@admin_bp.route('/cursos/grupo/<int:grupo_id>/materias', methods=['POST'])
+@requiere_admin
+def agregar_materias(grupo_id):
+    """Agrega materias al curso. Cada una se guarda como un curso con su docente (o sin asignar)."""
+    db = get_db()
+    grupo = db.execute('SELECT * FROM grupos_curso WHERE id = ?', (grupo_id,)).fetchone()
+    if grupo is None:
+        abort(404)
+    marcadas = [m for m in request.form.getlist('materias') if m.isdigit()]
+    try:
+        if not marcadas:
+            raise ValueError('Agregue al menos una materia al curso.')
+        asignaciones = []
+        for materia_id in marcadas:
+            docente_id = request.form.get(f'docente_{materia_id}', '')
+            nombre = db.execute('SELECT nombre FROM materias WHERE id = ?', (materia_id,)).fetchone()
+            if nombre is None:
+                raise ValueError('Una de las materias ya no existe.')
+            if docente_id and not (docente_id.isdigit() and _docente_puede_dictar(int(docente_id), int(materia_id))):
+                raise ValueError(f'El docente elegido no está habilitado para {nombre["nombre"]}.')
+            asignaciones.append((int(materia_id), int(docente_id) if docente_id else None))
+        for materia_id, docente_id in asignaciones:
+            db.execute(
+                'INSERT INTO cursos (materia_id, docente_id, jornada_id, periodo, grupo, ciclo, horario, cupo, grupo_id) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (materia_id, docente_id, grupo['jornada_id'], grupo['periodo'], grupo['grupo'], grupo['ciclo'],
+                 grupo['horario'], grupo['cupo'], grupo_id))
+        # Los estudiantes que ya están en el curso también cursan las materias nuevas
+        db.execute(
+            'INSERT OR IGNORE INTO matriculas (curso_id, estudiante_id) '
+            'SELECT c.id, e.estudiante_id FROM cursos c '
+            'CROSS JOIN (SELECT DISTINCT mt.estudiante_id FROM matriculas mt '
+            '            JOIN cursos cg ON cg.id = mt.curso_id WHERE cg.grupo_id = ?) e '
+            'WHERE c.grupo_id = ?',
+            (grupo_id, grupo_id))
+        db.commit()
+        flash(f'Se agregaron {len(asignaciones)} materia(s) al curso {grupo["grupo"]}.', 'ok')
+    except ValueError as error:
+        db.rollback()
+        flash(str(error), 'error')
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash('Alguna de esas materias ya está en este curso.', 'error')
+    return redirect(url_for('admin.curso_grupo', grupo_id=grupo_id))
+
+
+@admin_bp.route('/cursos/grupo/<int:grupo_id>/eliminar', methods=['POST'])
+@requiere_admin
+def eliminar_grupo(grupo_id):
+    db = get_db()
+    grupo = db.execute('SELECT ciclo FROM grupos_curso WHERE id = ?', (grupo_id,)).fetchone()
+    if grupo is None:
+        abort(404)
+    if db.execute('SELECT 1 FROM cursos WHERE grupo_id = ?', (grupo_id,)).fetchone():
+        flash('Este curso tiene materias. Elimínelas primero.', 'error')
+        return redirect(url_for('admin.curso_grupo', grupo_id=grupo_id))
+    db.execute('DELETE FROM grupos_curso WHERE id = ?', (grupo_id,))
+    db.commit()
+    flash('Curso eliminado.', 'ok')
+    return redirect(url_for('admin.vista_ciclo', ciclo=grupo['ciclo'] if grupo['ciclo'] else 'sin'))
+
+
+@admin_bp.route('/cursos/grupo/<int:grupo_id>/estudiantes', methods=['POST'])
+@requiere_admin
+def agregar_estudiantes(grupo_id):
+    """Matricula estudiantes en el curso: quedan inscritos en todas sus materias."""
+    db = get_db()
+    if db.execute('SELECT 1 FROM grupos_curso WHERE id = ?', (grupo_id,)).fetchone() is None:
+        abort(404)
+    ids = sorted({e for e in request.form.getlist('estudiantes') if e.isdigit()}, key=int)
+    if not ids:
+        flash('Agregue al menos un estudiante.', 'error')
+        return redirect(url_for('admin.curso_grupo', grupo_id=grupo_id))
+    cursos_ids = [fila['id'] for fila in db.execute(
+        'SELECT id FROM cursos WHERE grupo_id = ?', (grupo_id,)).fetchall()]
+    if not cursos_ids:
+        flash('Este curso todavía no tiene materias. Agregue materias antes de matricular estudiantes.', 'error')
+        return redirect(url_for('admin.curso_grupo', grupo_id=grupo_id))
+    try:
+        for estudiante_id in ids:
+            for curso_id in cursos_ids:
+                db.execute('INSERT OR IGNORE INTO matriculas (curso_id, estudiante_id) VALUES (?, ?)',
+                           (curso_id, int(estudiante_id)))
+        db.commit()
+        flash(f'Se matricularon {len(ids)} estudiante(s) en las {len(cursos_ids)} materia(s) del curso.', 'ok')
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash('No se pudo matricular: alguno de los estudiantes ya no existe.', 'error')
+    return redirect(url_for('admin.curso_grupo', grupo_id=grupo_id))
+
+
+@admin_bp.route('/cursos/grupo/<int:grupo_id>/estudiantes/<int:estudiante_id>/quitar', methods=['POST'])
+@requiere_admin
+def quitar_estudiante(grupo_id, estudiante_id):
+    db = get_db()
+    tiene_notas = db.execute(
+        'SELECT 1 FROM calificaciones k JOIN cursos c ON c.id = k.curso_id '
+        'WHERE c.grupo_id = ? AND k.estudiante_id = ? '
+        'UNION ALL '
+        'SELECT 1 FROM notas_criterio np JOIN criterios_evaluacion cr ON cr.id = np.criterio_id '
+        'JOIN cursos c ON c.id = cr.curso_id WHERE c.grupo_id = ? AND np.estudiante_id = ? LIMIT 1',
+        (grupo_id, estudiante_id, grupo_id, estudiante_id)).fetchone()
+    if tiene_notas:
+        flash('No se puede quitar: el estudiante ya tiene notas en este curso.', 'error')
+    else:
+        db.execute('DELETE FROM matriculas WHERE estudiante_id = ? '
+                   'AND curso_id IN (SELECT id FROM cursos WHERE grupo_id = ?)', (estudiante_id, grupo_id))
+        db.commit()
+        flash('Estudiante quitado del curso.', 'ok')
+    return redirect(url_for('admin.curso_grupo', grupo_id=grupo_id))
+
+
+def _vista_calificaciones():
+    """Cursos activos (periodo más reciente), con cuántos estudiantes tiene cada uno."""
+    db = get_db()
+    periodo = db.execute('SELECT periodo FROM cursos ORDER BY periodo DESC LIMIT 1').fetchone()
+    cursos = []
+    if periodo is not None:
+        cursos = db.execute(
+            "SELECT c.id, m.nombre AS materia, c.ciclo, c.grupo, c.periodo, c.horario, "
+            "COALESCE(d.nombres || ' ' || d.apellidos, 'Sin asignar') AS docente, "
+            "(SELECT COUNT(*) FROM matriculas mt WHERE mt.curso_id = c.id) AS total "
+            "FROM cursos c JOIN materias m ON m.id = c.materia_id "
+            "LEFT JOIN docentes d ON d.id = c.docente_id "
+            "WHERE c.periodo = ? ORDER BY m.nombre, c.grupo", (periodo['periodo'],)).fetchall()
+    return render_template('admin/calificaciones.html', cursos=cursos,
+                           periodo=periodo['periodo'] if periodo else None, entidades=ENTIDADES)
+
+
+# Rutas de la pantalla de notas del curso (la misma que usa el docente)
+RUTAS_NOTAS_ADMIN = {
+    'guardar': 'admin.curso_notas',
+    'agregar': 'admin.agregar_criterio',
+    'eliminar': 'admin.eliminar_criterio',
+    'exportar': 'admin.exportar_notas',
+}
+
+
+def _curso_existente(curso_id):
+    curso = get_db().execute(
+        "SELECT c.id, c.docente_id, m.nombre AS materia, m.creditos, c.grupo, c.periodo, c.cupo, c.horario, "
+        "j.nombre AS jornada, COALESCE(d.nombres || ' ' || d.apellidos, 'Sin asignar') AS docente "
+        "FROM cursos c JOIN materias m ON m.id = c.materia_id "
+        "JOIN jornadas j ON j.id = c.jornada_id LEFT JOIN docentes d ON d.id = c.docente_id "
+        "WHERE c.id = ?", (curso_id,)).fetchone()
+    if curso is None:
+        abort(404)
+    return curso
+
+
+@admin_bp.route('/calificaciones/curso/<int:curso_id>', methods=['GET', 'POST'])
+@requiere_admin
+def curso_notas(curso_id):
+    curso = _curso_existente(curso_id)
+    if request.method == 'POST':
+        ok, mensaje = notas.guardar_notas(curso_id, request.form)
+        flash(mensaje, 'ok' if ok else 'error')
+        return redirect(url_for('admin.curso_notas', curso_id=curso_id))
+
+    criterios, total, estudiantes = notas.estudiantes_con_notas(curso_id)
+    return render_template('admin/curso_notas.html', curso=curso, criterios=criterios, total=total,
+                           estudiantes=estudiantes, rutas=RUTAS_NOTAS_ADMIN, entidades=ENTIDADES)
+
+
+@admin_bp.route('/calificaciones/curso/<int:curso_id>/criterios', methods=['POST'])
+@requiere_admin
+def agregar_criterio(curso_id):
+    _curso_existente(curso_id)
+    ok, mensaje = notas.agregar_criterio(curso_id, request.form.get('nombre'), request.form.get('porcentaje'))
+    flash(mensaje, 'ok' if ok else 'error')
+    return redirect(url_for('admin.curso_notas', curso_id=curso_id))
+
+
+@admin_bp.route('/calificaciones/curso/<int:curso_id>/criterios/<int:criterio_id>/eliminar', methods=['POST'])
+@requiere_admin
+def eliminar_criterio(curso_id, criterio_id):
+    _curso_existente(curso_id)
+    notas.eliminar_criterio(curso_id, criterio_id)
+    flash('Criterio eliminado. Las notas de ese criterio también se borraron.', 'ok')
+    return redirect(url_for('admin.curso_notas', curso_id=curso_id))
+
+
+@admin_bp.route('/calificaciones/curso/<int:curso_id>/exportar/<formato>')
+@requiere_admin
+def exportar_notas(curso_id, formato):
+    _curso_existente(curso_id)
+    return notas.respuesta_exportacion(curso_id, formato)
 
 
 def _materias_del_formulario():
@@ -416,19 +720,13 @@ def _materias_del_formulario():
 
 
 def _actualizar_extras_docente(docente_id, materias):
-    """Reemplaza las materias habilitadas y, si se subió un archivo, la hoja de vida."""
+    """Reemplaza las materias habilitadas del docente."""
     db = get_db()
     db.execute('DELETE FROM docente_materias WHERE docente_id = ?', (docente_id,))
     for materia_id in materias:
         db.execute('INSERT OR IGNORE INTO docente_materias (docente_id, materia_id) VALUES (?, ?)',
                    (docente_id, materia_id))
     db.commit()
-
-    archivo = request.files.get('hoja')
-    if archivo is not None and archivo.filename:
-        ok, mensaje = guardar_hoja(docente_id, archivo)
-        if not ok:
-            flash(f'Los datos se actualizaron, pero la hoja de vida no: {mensaje}', 'error')
 
 
 @admin_bp.route('/<entidad>/<int:registro_id>/editar', methods=['GET', 'POST'])
@@ -447,10 +745,15 @@ def editar(entidad, registro_id):
             valores = _valores_del_formulario(config)
             materias = _materias_del_formulario() if entidad == 'docentes' else []
 
-            if entidad == 'cursos' and not _docente_puede_dictar(valores['docente_id'], valores['materia_id']):
+            if entidad == 'cursos' and valores.get('docente_id') and not _docente_puede_dictar(valores['docente_id'], valores['materia_id']):
                 raise ValueError('Ese docente no está habilitado para dictar esa materia. '
                                  'Revise las materias que puede dictar en su registro.')
             if entidad == 'docentes':
+                valores['correo'] = (valores.get('correo') or '').lower()
+                # El correo es también el usuario de ingreso: no puede estar en otra cuenta
+                if db.execute('SELECT 1 FROM usuarios WHERE correo = ? AND docente_id IS NOT ?',
+                              (valores['correo'], registro_id)).fetchone():
+                    raise ValueError('Ese correo ya tiene una cuenta en la plataforma.')
                 # No se puede quitar una materia si el docente ya tiene cursos de esa materia
                 consulta_quitadas = ('SELECT DISTINCT m.nombre FROM cursos c '
                                      'JOIN materias m ON m.id = c.materia_id WHERE c.docente_id = ?')
@@ -466,6 +769,8 @@ def editar(entidad, registro_id):
             asignaciones = ', '.join(f'{columna} = ?' for columna in valores)
             db.execute(f'UPDATE {config["tabla"]} SET {asignaciones} WHERE id = ?',
                        [*valores.values(), registro_id])
+            if entidad == 'docentes':
+                db.execute('UPDATE usuarios SET correo = ? WHERE docente_id = ?', (valores['correo'], registro_id))
             db.commit()
             if entidad == 'docentes':
                 _actualizar_extras_docente(registro_id, materias)
@@ -480,23 +785,22 @@ def editar(entidad, registro_id):
     campos = []
     for campo in config['campos']:
         campo = dict(campo)
-        campo['valor'] = registro[campo['nombre']]
+        # Los campos que no son columna (por ejemplo, la clave temporal) no tienen valor que mostrar
+        campo['valor'] = None if campo.get('no_columna') else registro[campo['nombre']]
         if campo.get('tipo') == 'select':
             campo['opciones'] = _opciones(campo)
         campos.append(campo)
 
-    materias_opciones = seleccionadas = hoja = None
+    materias_opciones = seleccionadas = None
     if entidad == 'docentes':
         materias_opciones = _opciones({'opciones_sql': SQL_MATERIAS_OPCIONES})
         seleccionadas = {fila['materia_id'] for fila in db.execute(
             'SELECT materia_id FROM docente_materias WHERE docente_id = ?', (registro_id,)).fetchall()}
-        hoja = db.execute(
-            'SELECT nombre_original FROM hojas_de_vida WHERE docente_id = ?', (registro_id,)).fetchone()
 
     filas = db.execute(config['consulta']).fetchall()
     return render_template('admin/entidad.html', entidad=entidad, config=config, filas=filas,
                            campos=campos, entidades=ENTIDADES, materias_opciones=materias_opciones,
-                           seleccionadas=seleccionadas or set(), hoja=hoja,
+                           seleccionadas=seleccionadas or set(),
                            editando=True, registro_id=registro_id)
 
 

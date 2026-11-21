@@ -1,11 +1,20 @@
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_from_directory, session, url_for
 
 from nucleo.db import get_db
+from servicios import notas
 from servicios.hojas import HOJAS_DIR, guardar_hoja
 from nucleo.seguridad import requiere_rol
 
 
 docente_bp = Blueprint('docente', __name__, url_prefix='/docente')
+
+# Rutas que usa la pantalla de notas (la misma para el docente y el administrador)
+RUTAS_NOTAS = {
+    'guardar': 'docente.curso',
+    'agregar': 'docente.agregar_criterio',
+    'eliminar': 'docente.eliminar_criterio',
+    'exportar': 'docente.exportar_notas',
+}
 
 
 def _curso_del_docente(curso_id):
@@ -52,64 +61,43 @@ def curso(curso_id):
     curso = _curso_del_docente(curso_id)
 
     if request.method == 'POST':
-        return _guardar_notas(curso_id)
+        ok, mensaje = notas.guardar_notas(curso_id, request.form)
+        flash(mensaje, 'ok' if ok else 'error')
+        return redirect(url_for('docente.curso', curso_id=curso_id))
 
-    db = get_db()
-    estudiantes = db.execute(
-        "SELECT e.id, e.codigo, e.apellidos || ' ' || e.nombres AS nombre, k.nota "
-        "FROM matriculas mt "
-        "JOIN estudiantes e ON e.id = mt.estudiante_id "
-        "LEFT JOIN calificaciones k ON k.curso_id = mt.curso_id AND k.estudiante_id = e.id "
-        "WHERE mt.curso_id = ? "
-        "ORDER BY e.apellidos, e.nombres",
-        (curso_id,)).fetchall()
-
-    evaluacion = db.execute(
+    criterios, total, estudiantes = notas.estudiantes_con_notas(curso_id)
+    evaluacion = get_db().execute(
         "SELECT ROUND(AVG(puntuacion), 2) AS promedio, COUNT(*) AS total "
         "FROM evaluaciones_docente WHERE curso_id = ?",
         (curso_id,)).fetchone()
 
-    return render_template('docente/curso.html', curso=curso, estudiantes=estudiantes,
-                           evaluacion=evaluacion)
+    return render_template('docente/curso.html', curso=curso, criterios=criterios, total=total,
+                           estudiantes=estudiantes, evaluacion=evaluacion, rutas=RUTAS_NOTAS)
 
 
-def _guardar_notas(curso_id):
-    """Guarda las notas escritas. Un campo vacío deja la nota como estaba.
-
-    Si alguna nota no es válida, no se guarda ninguna, para no dejar el curso a medias.
-    """
-    db = get_db()
-    matriculados = [fila['estudiante_id'] for fila in db.execute(
-        'SELECT estudiante_id FROM matriculas WHERE curso_id = ?', (curso_id,)).fetchall()]
-    # Solo los estudiantes matriculados pueden tener nota en este curso
-
-    notas = []
-    for estudiante_id in matriculados:
-        bruto = request.form.get(f'nota_{estudiante_id}', '').strip().replace(',', '.')
-        if not bruto:
-            continue
-        try:
-            valor = float(bruto)
-        except ValueError:
-            flash('Hay notas que no son números. No se guardó ninguna. Revise y vuelva a intentar.', 'error')
-            return redirect(url_for('docente.curso', curso_id=curso_id))
-        if not 0 <= valor <= 5:
-            flash('Las notas deben estar entre 0.0 y 5.0. No se guardó ninguna.', 'error')
-            return redirect(url_for('docente.curso', curso_id=curso_id))
-        notas.append((estudiante_id, valor))
-
-    for estudiante_id, valor in notas:
-        db.execute(
-            'INSERT INTO calificaciones (curso_id, estudiante_id, nota) VALUES (?, ?, ?) '
-            'ON CONFLICT (curso_id, estudiante_id) DO UPDATE SET nota = excluded.nota',
-            (curso_id, estudiante_id, valor))
-    db.commit()
-
-    if notas:
-        flash(f'Se guardaron {len(notas)} nota(s).', 'ok')
-    else:
-        flash('No escribió ninguna nota nueva.', 'error')
+@docente_bp.route('/cursos/<int:curso_id>/criterios', methods=['POST'])
+@requiere_rol('docente')
+def agregar_criterio(curso_id):
+    _curso_del_docente(curso_id)
+    ok, mensaje = notas.agregar_criterio(curso_id, request.form.get('nombre'), request.form.get('porcentaje'))
+    flash(mensaje, 'ok' if ok else 'error')
     return redirect(url_for('docente.curso', curso_id=curso_id))
+
+
+@docente_bp.route('/cursos/<int:curso_id>/criterios/<int:criterio_id>/eliminar', methods=['POST'])
+@requiere_rol('docente')
+def eliminar_criterio(curso_id, criterio_id):
+    _curso_del_docente(curso_id)
+    notas.eliminar_criterio(curso_id, criterio_id)
+    flash('Criterio eliminado. Las notas de ese criterio también se borraron.', 'ok')
+    return redirect(url_for('docente.curso', curso_id=curso_id))
+
+
+@docente_bp.route('/cursos/<int:curso_id>/exportar/<formato>')
+@requiere_rol('docente')
+def exportar_notas(curso_id, formato):
+    _curso_del_docente(curso_id)
+    return notas.respuesta_exportacion(curso_id, formato)
 
 
 @docente_bp.route('/materias')

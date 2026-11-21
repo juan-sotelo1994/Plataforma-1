@@ -1,0 +1,56 @@
+<!-- Ventana «Nuevo curso»: crea el curso de un ciclo. Sus materias se agregan después, desde el curso. -->
+<dialog id="ventana-crear" class="dialog" aria-labelledby="titulo-curso">
+    <form method="post" action="{{ url_for('admin.nuevo_curso') }}"
+          data-confirmar="Se creará el curso con este ciclo, grupo y periodo."
+          data-confirmar-titulo="¿Crear el curso?"
+          data-confirmar-boton="Sí, crear"
+          data-confirmar-color="#1e3a8a">
+        <div class="dialog-head">
+            <h2 id="titulo-curso"><i class="fa-solid fa-square-plus"></i>Nuevo curso</h2>
+            <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="dialog-body">
+            <label class="form-field">
+                <span>Ciclo</span>
+                <select name="ciclo" required>
+                    <option value="">— Seleccione —</option>
+                    {% for ciclo in ciclos %}
+                    <option value="{{ ciclo }}" {% if preseleccion and preseleccion|string == ciclo|string %}selected{% endif %}>Ciclo {{ ciclo }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="form-field">
+                <span>Letra del grupo</span>
+                <input type="text" name="grupo" maxlength="3" placeholder="A" required>
+                <small class="ayuda">Con el ciclo forma el curso, por ejemplo 1A.</small>
+            </label>
+            <label class="form-field">
+                <span>Periodo</span>
+                <input type="text" name="periodo" placeholder="2026-B" required>
+            </label>
+            <label class="form-field">
+                <span>Jornada</span>
+                <select name="jornada_id" required>
+                    <option value="">— Seleccione —</option>
+                    {% for jornada in jornadas %}
+                    <option value="{{ jornada.id }}">{{ jornada.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="form-field">
+                <span>Horario <small>(opcional)</small></span>
+                <input type="text" name="horario" placeholder="Lun y mié 6:00 a. m. – 8:00 a. m.">
+            </label>
+            <label class="form-field">
+                <span>Cupo <small>(opcional)</small></span>
+                <input type="number" name="cupo" min="0" step="1" placeholder="30">
+            </label>
+        </div>
+
+        <div class="dialog-foot">
+            <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
+            <button type="submit" class="boton-admin boton-admin-primario">Crear curso</button>
+        </div>
+    </form>
+</dialog>

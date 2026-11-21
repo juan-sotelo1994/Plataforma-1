@@ -1,0 +1,62 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block title %}Ciclo {{ ciclo }}{% endblock %}
+
+{% block content %}
+
+<p><a href="{{ url_for('admin.entidad', entidad='cursos') }}">← Volver a los ciclos</a></p>
+
+<h1>{% if ciclo == 'sin' %}Cursos sin ciclo{% else %}Ciclo {{ ciclo }}{% endif %}</h1>
+<p>Cursos de este ciclo. Abra un curso para ver sus materias y asignarles docente.</p>
+
+<section class="bloque-admin">
+    <h2 style="display:flex; align-items:center; gap:12px;">
+        Cursos <span class="contador">({{ grupos|length }})</span>
+        {% if ciclo != 'sin' %}
+        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-crear" style="margin-left:auto;">
+            <i class="fa-solid fa-plus"></i> Nuevo curso
+        </button>
+        {% endif %}
+    </h2>
+
+    {% if grupos %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Curso</th>
+                    <th scope="col">Periodo</th>
+                    <th scope="col">Jornada</th>
+                    <th scope="col">Horario</th>
+                    <th scope="col">Cupo</th>
+                    <th scope="col">Materias</th>
+                    <th scope="col" class="col-acciones">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for grupo in grupos %}
+                <tr>
+                    <td><a href="{{ url_for('admin.curso_grupo', grupo_id=grupo.id) }}"><strong>{{ grupo.grupo }}</strong></a></td>
+                    <td>{{ grupo.periodo }}</td>
+                    <td>{{ grupo.jornada }}</td>
+                    <td>{{ grupo.horario or '—' }}</td>
+                    <td>{{ grupo.cupo }}</td>
+                    <td>{{ grupo.materias }}</td>
+                    <td class="col-acciones">
+                        <a href="{{ url_for('admin.curso_grupo', grupo_id=grupo.id) }}" class="boton-admin boton-admin-primario" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-book-open"></i> Ver materias</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">No hay cursos en este ciclo.{% if ciclo != 'sin' %} Use «Nuevo curso» para crear el primero.{% endif %}</p>
+    {% endif %}
+</section>
+
+{% if ciclo != 'sin' %}
+{% include 'admin/_nuevo_curso.html' %}
+{% endif %}
+
+{% endblock %}

@@ -22,6 +22,36 @@
 {% endif %}
 {%- endmacro %}
 
+{# Confirmaciones con SweetAlert2: un formulario con data-confirmar pide confirmación antes de enviarse #}
+{% macro confirmar_js() -%}
+<style>.swal-titulo-grande{font-size:2.4rem !important;}.swal-texto-grande{font-size:1.4rem !important;}</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.10.8/sweetalert2.all.min.js"></script>
+<script>
+    document.addEventListener('submit', function (evento) {
+        var formulario = evento.target;
+        if (!formulario.matches('form[data-confirmar]')) return;
+        evento.preventDefault();
+        Swal.fire({
+            // Dentro de un <dialog> abierto, la ventana debe montarse en ese mismo dialog para poder usarse
+            target: formulario.closest('dialog') || document.body,
+            icon: formulario.dataset.confirmarIcono || 'question',
+            title: formulario.dataset.confirmarTitulo || '¿Está seguro?',
+            text: formulario.dataset.confirmar,
+            showCancelButton: true,
+            confirmButtonText: formulario.dataset.confirmarBoton || 'Sí, continuar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: formulario.dataset.confirmarColor || '#1e3a8a',
+            cancelButtonColor: '#6b7280',
+            width: 640,
+            padding: '2.6em',
+            customClass: { title: 'swal-titulo-grande', htmlContainer: 'swal-texto-grande' }
+        }).then(function (resultado) {
+            if (resultado.isConfirmed) formulario.submit();
+        });
+    });
+</script>
+{%- endmacro %}
+
 {% macro modal_avisos(mensajes) -%}
 {% set avisos = [] %}
 {% for categoria, mensaje in mensajes %}{% if categoria != 'error' %}{% set _ = avisos.append(mensaje) %}{% endif %}{% endfor %}

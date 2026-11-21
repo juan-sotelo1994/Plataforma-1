@@ -1,0 +1,53 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block title %}Calificaciones{% endblock %}
+
+{% block content %}
+
+<h1>Calificaciones</h1>
+<p>{% if periodo %}Cursos activos del periodo {{ periodo }}. Use «Calificar» para definir los criterios del curso y registrar las notas.{% else %}Todavía no hay cursos registrados.{% endif %}</p>
+
+<section class="bloque-admin">
+    <h2 style="display:flex; align-items:center; gap:12px;">
+        Cursos <span class="contador">({{ cursos|length }})</span>
+    </h2>
+
+    {% if cursos %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Materia</th>
+                    <th scope="col">Ciclo</th>
+                    <th scope="col">Grupo</th>
+                    <th scope="col">Docente</th>
+                    <th scope="col">Horario</th>
+                    <th scope="col">Estudiantes</th>
+                    <th scope="col" class="col-acciones">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for curso in cursos %}
+                <tr>
+                    <td>{{ curso.materia }}</td>
+                    <td>{{ curso.ciclo or '—' }}</td>
+                    <td>{{ curso.grupo }}</td>
+                    <td>{{ curso.docente }}</td>
+                    <td>{{ curso.horario or '—' }}</td>
+                    <td>{{ curso.total }}</td>
+                    <td class="col-acciones">
+                        <a href="{{ url_for('admin.curso_notas', curso_id=curso.id) }}" class="boton-admin boton-admin-primario" style="height:30px; padding:0 10px; font-size:13px;">
+                            <i class="fa-solid fa-star-half-stroke"></i> Calificar
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">No hay cursos activos. Créelos desde la sección Cursos.</p>
+    {% endif %}
+</section>
+
+{% endblock %}

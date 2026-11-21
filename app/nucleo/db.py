@@ -41,13 +41,25 @@ CREATE TABLE IF NOT EXISTS materias (
 CREATE TABLE IF NOT EXISTS cursos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     materia_id INTEGER NOT NULL REFERENCES materias(id),
-    docente_id INTEGER NOT NULL REFERENCES docentes(id),
+    docente_id INTEGER REFERENCES docentes(id),
     jornada_id INTEGER NOT NULL REFERENCES jornadas(id),
     periodo TEXT NOT NULL,
     grupo TEXT NOT NULL,
     cupo INTEGER NOT NULL DEFAULT 0,
     horario TEXT,
     UNIQUE (materia_id, periodo, grupo)
+);
+
+-- Curso de un ciclo (por ejemplo, ciclo 3 grupo 3A). Sus materias son las filas de cursos con este grupo_id
+CREATE TABLE IF NOT EXISTS grupos_curso (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ciclo INTEGER,
+    grupo TEXT NOT NULL,
+    periodo TEXT NOT NULL,
+    jornada_id INTEGER NOT NULL REFERENCES jornadas(id),
+    horario TEXT,
+    cupo INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (grupo, periodo)
 );
 
 CREATE TABLE IF NOT EXISTS estudiantes (
@@ -71,6 +83,23 @@ CREATE TABLE IF NOT EXISTS calificaciones (
     estudiante_id INTEGER NOT NULL REFERENCES estudiantes(id),
     nota REAL NOT NULL CHECK (nota >= 0 AND nota <= 5),
     UNIQUE (curso_id, estudiante_id)
+);
+
+-- Criterios de evaluación de un curso (por ejemplo, Parcial 30 %). Deben sumar 100 %
+CREATE TABLE IF NOT EXISTS criterios_evaluacion (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    curso_id INTEGER NOT NULL REFERENCES cursos(id) ON DELETE CASCADE,
+    nombre TEXT NOT NULL,
+    porcentaje REAL NOT NULL CHECK (porcentaje > 0 AND porcentaje <= 100),
+    orden INTEGER NOT NULL DEFAULT 0
+);
+
+-- Nota de un estudiante en cada criterio (escala de 0.0 a 5.0)
+CREATE TABLE IF NOT EXISTS notas_criterio (
+    criterio_id INTEGER NOT NULL REFERENCES criterios_evaluacion(id) ON DELETE CASCADE,
+    estudiante_id INTEGER NOT NULL REFERENCES estudiantes(id),
+    nota REAL NOT NULL CHECK (nota >= 0 AND nota <= 5),
+    PRIMARY KEY (criterio_id, estudiante_id)
 );
 
 -- Cuentas de docentes y estudiantes (el administrador vive en el .env)
@@ -291,6 +320,87 @@ def _migrar(conexion):
     _ajustar_requisitos_academicos(conexion)
     _ajustar_secciones(conexion)
     _reactivar_sisben(conexion)
+
+    columnas_cursos = {fila['name'] for fila in conexion.execute('PRAGMA table_info(cursos)')}
+    # El curso se organiza por ciclo (1 a 6), no por grado
+    if 'grado' in columnas_cursos and 'ciclo' not in columnas_cursos:
+        conexion.execute('ALTER TABLE cursos RENAME COLUMN grado TO ciclo')
+        conexion.execute('UPDATE cursos SET ciclo = NULL WHERE ciclo > 6')
+    elif 'ciclo' not in columnas_cursos:
+        conexion.execute('ALTER TABLE cursos ADD COLUMN ciclo INTEGER')
+    _permitir_curso_sin_docente(conexion)
+    _crear_grupos_curso(conexion)
+    _sembrar_materias_grados(conexion)
+
+
+def _crear_grupos_curso(conexion):
+    """Cada grupo que ya existía en cursos pasa a ser un curso; sus materias quedan enlazadas a él.
+
+    Es seguro repetirla: solo toca las filas que todavía no tienen curso asignado.
+    """
+    columnas = {fila['name'] for fila in conexion.execute('PRAGMA table_info(cursos)')}
+    if 'grupo_id' not in columnas:
+        conexion.execute('ALTER TABLE cursos ADD COLUMN grupo_id INTEGER REFERENCES grupos_curso(id)')
+    conexion.execute(
+        'INSERT OR IGNORE INTO grupos_curso (ciclo, grupo, periodo, jornada_id, horario, cupo) '
+        'SELECT ciclo, grupo, periodo, jornada_id, horario, cupo FROM cursos WHERE grupo_id IS NULL '
+        'GROUP BY grupo, periodo')
+    conexion.execute(
+        'UPDATE cursos SET grupo_id = (SELECT g.id FROM grupos_curso g '
+        'WHERE g.grupo = cursos.grupo AND g.periodo = cursos.periodo) WHERE grupo_id IS NULL')
+    conexion.commit()
+
+
+def _permitir_curso_sin_docente(conexion):
+    """Una sola vez por base: el docente de un curso puede quedar sin asignar.
+
+    SQLite no permite quitar NOT NULL con ALTER, así que la tabla se reconstruye.
+    """
+    columnas = {fila['name']: fila['notnull'] for fila in conexion.execute('PRAGMA table_info(cursos)')}
+    if not columnas.get('docente_id'):
+        return
+    conexion.commit()
+    conexion.execute('PRAGMA foreign_keys = OFF')
+    conexion.execute('''
+        CREATE TABLE cursos_nuevo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            materia_id INTEGER NOT NULL REFERENCES materias(id),
+            docente_id INTEGER REFERENCES docentes(id),
+            jornada_id INTEGER NOT NULL REFERENCES jornadas(id),
+            periodo TEXT NOT NULL,
+            grupo TEXT NOT NULL,
+            cupo INTEGER NOT NULL DEFAULT 0,
+            horario TEXT,
+            ciclo INTEGER,
+            UNIQUE (materia_id, periodo, grupo)
+        )''')
+    conexion.execute('INSERT INTO cursos_nuevo (id, materia_id, docente_id, jornada_id, periodo, grupo, cupo, '
+                     'horario, ciclo) SELECT id, materia_id, docente_id, jornada_id, periodo, grupo, cupo, '
+                     'horario, ciclo FROM cursos')
+    conexion.execute('DROP TABLE cursos')
+    conexion.execute('ALTER TABLE cursos_nuevo RENAME TO cursos')
+    conexion.execute('PRAGMA foreign_keys = ON')
+    conexion.commit()
+
+
+# Materias base de los grados 6.º, 7.º y 8.º (código, nombre)
+MATERIAS_GRADOS = [
+    ('MAT-MATE', 'Matemáticas'),
+    ('MAT-ESP', 'Español'),
+    ('MAT-CNAT', 'Ciencias naturales'),
+    ('MAT-ING', 'Inglés'),
+    ('MAT-INF', 'Informática'),
+    ('MAT-EDF', 'Educación física'),
+]
+
+
+def _sembrar_materias_grados(conexion):
+    """Una sola vez: crea las materias base que se asignan a los grados 6, 7 y 8."""
+    if conexion.execute("SELECT 1 FROM configuracion WHERE clave = 'materias_grados_v6'").fetchone():
+        return
+    conexion.executemany('INSERT OR IGNORE INTO materias (codigo, nombre, creditos, ciclo) VALUES (?, ?, 0, 1)',
+                         MATERIAS_GRADOS)
+    conexion.execute("INSERT INTO configuracion (clave, valor) VALUES ('materias_grados_v6', 'si')")
 
 
 # Requisitos de inscripción que pidió el colegio. Se cargan una sola vez; después el
