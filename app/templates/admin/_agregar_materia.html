@@ -1,0 +1,134 @@
+<!-- Ventana «Agregar materias»: busca materias y escoge el docente de cada una. Recibe: grupo, materias_json -->
+<dialog id="ventana-materia" class="dialog" aria-labelledby="titulo-materia">
+    <form method="post" action="{{ url_for('admin.agregar_materias', grupo_id=grupo.id) }}" id="formulario-materias"
+          data-confirmar="Las materias quedarán en este curso con los docentes escogidos."
+          data-confirmar-titulo="¿Agregar estas materias?"
+          data-confirmar-boton="Sí, agregar"
+          data-confirmar-color="#1e3a8a">
+        <div class="dialog-head">
+            <h2 id="titulo-materia"><i class="fa-solid fa-book"></i>Agregar materias al curso {{ grupo.grupo }}</h2>
+            <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="dialog-body">
+            <div class="form-field completo">
+                <span>Buscar materia</span>
+                <input type="search" id="buscar-materia" placeholder="Escriba el nombre o el código de la materia" autocomplete="off">
+                <div id="resultados" style="margin-top:8px; display:grid; gap:6px;"></div>
+            </div>
+
+            <div class="form-field completo">
+                <span>Materias de este curso</span>
+                <div id="seleccion" style="display:grid; gap:10px;">
+                    <p class="vacio" id="sin-materias">Todavía no ha agregado materias.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="dialog-foot">
+            <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
+            <button type="submit" class="boton-admin boton-admin-primario">Agregar materias</button>
+        </div>
+    </form>
+</dialog>
+
+<script id="datos-materias" type="application/json">{{ materias_json|tojson }}</script>
+<script>
+    (function () {
+        var materias = JSON.parse(document.getElementById('datos-materias').textContent);
+        var buscar = document.getElementById('buscar-materia');
+        var resultados = document.getElementById('resultados');
+        var seleccion = document.getElementById('seleccion');
+        var sinMaterias = document.getElementById('sin-materias');
+        var agregadas = {};
+
+        function coincide(materia, texto) {
+            return (materia.nombre + ' ' + materia.codigo).toLowerCase().indexOf(texto) !== -1;
+        }
+
+        function pintarResultados() {
+            var texto = buscar.value.trim().toLowerCase();
+            resultados.innerHTML = '';
+            if (!texto) return;
+            materias.filter(function (m) { return !agregadas[m.id] && coincide(m, texto); })
+                .slice(0, 8)
+                .forEach(function (m) {
+                    var boton = document.createElement('button');
+                    boton.type = 'button';
+                    boton.className = 'boton-admin';
+                    boton.style.justifyContent = 'space-between';
+                    boton.textContent = m.nombre + ' (' + m.codigo + ')';
+                    boton.addEventListener('click', function () { agregar(m); });
+                    resultados.appendChild(boton);
+                });
+            if (!resultados.children.length) {
+                var nada = document.createElement('p');
+                nada.className = 'vacio';
+                nada.textContent = 'No hay materias con ese nombre.';
+                resultados.appendChild(nada);
+            }
+        }
+
+        function agregar(materia) {
+            agregadas[materia.id] = true;
+            sinMaterias.style.display = 'none';
+
+            var fila = document.createElement('div');
+            fila.setAttribute('data-materia', materia.id);
+            fila.style.display = 'grid';
+            fila.style.gridTemplateColumns = '1fr 1fr auto';
+            fila.style.gap = '10px';
+            fila.style.alignItems = 'center';
+
+            var nombre = document.createElement('strong');
+            nombre.textContent = materia.nombre + ' (' + materia.codigo + ')';
+
+            // El docente es opcional: si no se escoge ahora, se asigna después
+            var docente = document.createElement('select');
+            docente.name = 'docente_' + materia.id;
+            var inicial = document.createElement('option');
+            inicial.value = '';
+            inicial.textContent = materia.docentes.length ? '— Asignar después —' : 'Sin docentes habilitados (asignar después)';
+            docente.appendChild(inicial);
+            materia.docentes.forEach(function (d) {
+                var opcion = document.createElement('option');
+                opcion.value = d.id;
+                opcion.textContent = d.texto;
+                docente.appendChild(opcion);
+            });
+
+            var quitar = document.createElement('button');
+            quitar.type = 'button';
+            quitar.className = 'boton-admin boton-admin-peligro';
+            quitar.textContent = 'Quitar';
+            quitar.addEventListener('click', function () {
+                delete agregadas[materia.id];
+                fila.remove();
+                if (!seleccion.querySelector('[data-materia]')) sinMaterias.style.display = '';
+                pintarResultados();
+            });
+
+            // El id de la materia viaja como campo oculto para que el servidor la reciba
+            var oculto = document.createElement('input');
+            oculto.type = 'hidden';
+            oculto.name = 'materias';
+            oculto.value = materia.id;
+
+            fila.appendChild(nombre);
+            fila.appendChild(docente);
+            fila.appendChild(quitar);
+            fila.appendChild(oculto);
+            seleccion.appendChild(fila);
+
+            buscar.value = '';
+            pintarResultados();
+            buscar.focus();
+        }
+
+        buscar.addEventListener('input', pintarResultados);
+        // Enter en la barra de búsqueda no debe enviar el formulario
+        buscar.addEventListener('keydown', function (evento) {
+            if (evento.key === 'Enter') evento.preventDefault();
+        });
+    })();
+</script>

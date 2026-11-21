@@ -1,0 +1,136 @@
+<!-- Criterios, notas y definitiva de un curso. Lo usan el portal del docente y el del administrador.
+     Recibe: curso, criterios, total, estudiantes y rutas (nombres de las rutas de esta pantalla). -->
+
+<section class="bloque-admin">
+    <h2>Criterios de evaluación
+        <span class="contador">({{ criterios|length }}) · suman {{ '%g' % total }} % de 100 %</span>
+        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-criterio" style="margin-left:auto;">
+            <i class="fa-solid fa-plus"></i> Agregar criterio
+        </button>
+    </h2>
+
+    {% if criterios %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Criterio</th>
+                    <th scope="col">Porcentaje</th>
+                    <th scope="col" class="col-acciones">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for criterio in criterios %}
+                <tr>
+                    <td>{{ criterio.nombre }}</td>
+                    <td>{{ '%g' % criterio.porcentaje }} %</td>
+                    <td class="col-acciones">
+                        <form method="post" action="{{ url_for(rutas.eliminar, curso_id=curso.id, criterio_id=criterio.id) }}" style="display:inline;"
+                              data-confirmar="Se borrarán también las notas de este criterio. Esta acción no se puede deshacer."
+                              data-confirmar-titulo="¿Eliminar este criterio?"
+                              data-confirmar-icono="warning"
+                              data-confirmar-boton="Sí, eliminar"
+                              data-confirmar-color="#cc3333">
+                            <button type="submit" class="boton-admin boton-admin-peligro">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if total|round(2) != 100 %}
+    <p class="nota-pie">Los porcentajes deben sumar 100 %. Mientras no sea así, la nota definitiva no se calcula.</p>
+    {% endif %}
+    {% else %}
+    <p class="vacio">Todavía no hay criterios. Agregue, por ejemplo, Parcial (30 %), Talleres (20 %) y Examen final (50 %).</p>
+    {% endif %}
+</section>
+
+<section class="bloque-admin">
+    <h2 style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">Notas de los estudiantes <span class="contador">(escala de 0.0 a 5.0)</span>
+        {% if estudiantes %}
+        <span style="margin-left:auto; display:flex; gap:8px;">
+            <a href="{{ url_for(rutas.exportar, curso_id=curso.id, formato='csv') }}" class="boton-admin"><i class="fa-solid fa-file-csv"></i> Exportar CSV</a>
+            <a href="{{ url_for(rutas.exportar, curso_id=curso.id, formato='pdf') }}" class="boton-admin"><i class="fa-solid fa-file-pdf"></i> Exportar PDF</a>
+        </span>
+        {% endif %}
+    </h2>
+
+    {% if estudiantes %}
+    {% if not criterios %}
+    <p class="nota-pie">Primero agregue los criterios de evaluación para poder registrar las notas.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for(rutas.guardar, curso_id=curso.id) }}"
+          {% if criterios %}
+          data-confirmar="Se guardarán las notas de los estudiantes de este curso."
+          data-confirmar-titulo="¿Guardar las notas?"
+          data-confirmar-boton="Sí, guardar"
+          data-confirmar-color="#1e3a8a"
+          {% endif %}>
+        <div class="tabla-contenedor">
+            <table class="tabla-admin">
+                <thead>
+                    <tr>
+                        <th scope="col">Código</th>
+                        <th scope="col">Estudiante</th>
+                        {% for criterio in criterios %}
+                        <th scope="col">{{ criterio.nombre }} <small>({{ '%g' % criterio.porcentaje }} %)</small></th>
+                        {% endfor %}
+                        <th scope="col">Definitiva</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for estudiante in estudiantes %}
+                    <tr>
+                        <td>{{ estudiante.codigo }}</td>
+                        <td>{{ estudiante.nombre }}</td>
+                        {% for criterio in criterios %}
+                        <td>
+                            <input type="number" name="nota_{{ criterio.id }}_{{ estudiante.id }}" min="0" max="5" step="0.1"
+                                   value="{{ '%.1f' % estudiante.notas[criterio.id] if criterio.id in estudiante.notas else '' }}"
+                                   placeholder="0.0 – 5.0" class="entrada-nota">
+                        </td>
+                        {% endfor %}
+                        <td><strong>{{ '%.2f' % estudiante.definitiva if estudiante.definitiva is not none else '—' }}</strong></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if criterios %}
+        <p class="nota-pie">La definitiva es el promedio de las notas según sus porcentajes. Aparece cuando los porcentajes suman 100 % y el estudiante tiene todas sus notas. Deje vacío un campo para borrar esa nota.</p>
+        <div class="acciones-form">
+            <button type="submit" class="boton-admin boton-admin-primario">Guardar notas</button>
+        </div>
+        {% endif %}
+    </form>
+    {% else %}
+    <p class="vacio">No hay estudiantes matriculados en este curso.</p>
+    {% endif %}
+</section>
+
+<!-- Ventana para agregar un criterio de evaluación -->
+<dialog id="ventana-criterio" class="dialog" aria-labelledby="titulo-criterio">
+    <form method="post" action="{{ url_for(rutas.agregar, curso_id=curso.id) }}">
+        <div class="dialog-head">
+            <h2 id="titulo-criterio"><i class="fa-solid fa-square-plus"></i>Nuevo criterio</h2>
+            <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="dialog-body">
+            <label class="form-field completo">
+                <span>Nombre del criterio</span>
+                <input type="text" name="nombre" maxlength="60" placeholder="Parcial, Talleres, Examen final…" required>
+            </label>
+            <label class="form-field">
+                <span>Porcentaje</span>
+                <input type="number" name="porcentaje" min="0.1" max="100" step="0.1" placeholder="30" required>
+                <small class="ayuda">Disponible: {{ '%g' % (100 - total) }} %</small>
+            </label>
+        </div>
+        <div class="dialog-foot">
+            <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
+            <button type="submit" class="boton-admin boton-admin-primario">Agregar criterio</button>
+        </div>
+    </form>
+</dialog>

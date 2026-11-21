@@ -1,4 +1,4 @@
-{% from '_alertas.html' import modal_errores, modal_avisos %}
+{% from '_alertas.html' import modal_errores, modal_avisos, confirmar_js %}
 <!DOCTYPE html>
 <html lang="es">
 
@@ -69,6 +69,7 @@
         </div>
     </div>
 
+    {{ confirmar_js() }}
     <script src="{{ url_for('static', filename='js/panel.js') }}" defer></script>
 </body>
 

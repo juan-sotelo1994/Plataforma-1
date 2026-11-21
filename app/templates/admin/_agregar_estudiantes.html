@@ -1,0 +1,117 @@
+<!-- Ventana «Agregar estudiantes»: busca estudiantes y los matricula en el curso. Recibe: grupo, estudiantes_json -->
+<dialog id="ventana-estudiantes" class="dialog" aria-labelledby="titulo-estudiantes">
+    <form method="post" action="{{ url_for('admin.agregar_estudiantes', grupo_id=grupo.id) }}" id="formulario-estudiantes"
+          data-confirmar="Los estudiantes quedarán matriculados en todas las materias de este curso."
+          data-confirmar-titulo="¿Matricular estos estudiantes?"
+          data-confirmar-boton="Sí, matricular"
+          data-confirmar-color="#1e3a8a">
+        <div class="dialog-head">
+            <h2 id="titulo-estudiantes"><i class="fa-solid fa-user-plus"></i>Agregar estudiantes al curso {{ grupo.grupo }}</h2>
+            <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="dialog-body">
+            <div class="form-field completo">
+                <span>Buscar estudiante</span>
+                <input type="search" id="buscar-estudiante" placeholder="Escriba el nombre, el código o el documento" autocomplete="off">
+                <div id="resultados-estudiantes" style="margin-top:8px; display:grid; gap:6px;"></div>
+            </div>
+
+            <div class="form-field completo">
+                <span>Estudiantes a matricular</span>
+                <div id="seleccion-estudiantes" style="display:grid; gap:8px;">
+                    <p class="vacio" id="sin-estudiantes">Todavía no ha agregado estudiantes.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="dialog-foot">
+            <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
+            <button type="submit" class="boton-admin boton-admin-primario">Matricular</button>
+        </div>
+    </form>
+</dialog>
+
+<script id="datos-estudiantes" type="application/json">{{ estudiantes_json|tojson }}</script>
+<script>
+    (function () {
+        var estudiantes = JSON.parse(document.getElementById('datos-estudiantes').textContent);
+        var buscar = document.getElementById('buscar-estudiante');
+        var resultados = document.getElementById('resultados-estudiantes');
+        var seleccion = document.getElementById('seleccion-estudiantes');
+        var sinEstudiantes = document.getElementById('sin-estudiantes');
+        var elegidos = {};
+
+        function coincide(estudiante, texto) {
+            return (estudiante.nombre + ' ' + estudiante.codigo + ' ' + estudiante.documento).toLowerCase().indexOf(texto) !== -1;
+        }
+
+        function pintarResultados() {
+            var texto = buscar.value.trim().toLowerCase();
+            resultados.innerHTML = '';
+            if (!texto) return;
+            estudiantes.filter(function (e) { return !elegidos[e.id] && coincide(e, texto); })
+                .slice(0, 8)
+                .forEach(function (e) {
+                    var boton = document.createElement('button');
+                    boton.type = 'button';
+                    boton.className = 'boton-admin';
+                    boton.style.justifyContent = 'space-between';
+                    boton.textContent = e.nombre + ' · ' + e.codigo;
+                    boton.addEventListener('click', function () { agregar(e); });
+                    resultados.appendChild(boton);
+                });
+            if (!resultados.children.length) {
+                var nada = document.createElement('p');
+                nada.className = 'vacio';
+                nada.textContent = 'No hay estudiantes con ese dato.';
+                resultados.appendChild(nada);
+            }
+        }
+
+        function agregar(estudiante) {
+            elegidos[estudiante.id] = true;
+            sinEstudiantes.style.display = 'none';
+
+            var fila = document.createElement('div');
+            fila.setAttribute('data-estudiante', estudiante.id);
+            fila.style.display = 'grid';
+            fila.style.gridTemplateColumns = '1fr auto';
+            fila.style.gap = '10px';
+            fila.style.alignItems = 'center';
+
+            var nombre = document.createElement('span');
+            nombre.textContent = estudiante.nombre + ' · ' + estudiante.codigo;
+
+            var quitar = document.createElement('button');
+            quitar.type = 'button';
+            quitar.className = 'boton-admin boton-admin-peligro';
+            quitar.textContent = 'Quitar';
+            quitar.addEventListener('click', function () {
+                delete elegidos[estudiante.id];
+                fila.remove();
+                if (!seleccion.querySelector('[data-estudiante]')) sinEstudiantes.style.display = '';
+                pintarResultados();
+            });
+
+            var oculto = document.createElement('input');
+            oculto.type = 'hidden';
+            oculto.name = 'estudiantes';
+            oculto.value = estudiante.id;
+
+            fila.appendChild(nombre);
+            fila.appendChild(quitar);
+            fila.appendChild(oculto);
+            seleccion.appendChild(fila);
+
+            buscar.value = '';
+            pintarResultados();
+            buscar.focus();
+        }
+
+        buscar.addEventListener('input', pintarResultados);
+        buscar.addEventListener('keydown', function (evento) {
+            if (evento.key === 'Enter') evento.preventDefault();
+        });
+    })();
+</script>

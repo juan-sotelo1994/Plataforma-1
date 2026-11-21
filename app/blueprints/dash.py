@@ -51,12 +51,12 @@ def _datos_estudiante(estudiante_id):
 def _cursos_del_estudiante(estudiante_id):
     return get_db().execute(
         "SELECT c.id AS curso_id, m.nombre AS materia, m.creditos, c.grupo, c.periodo, c.horario, "
-        "d.nombres || ' ' || d.apellidos AS docente, j.nombre AS jornada, "
+        "COALESCE(d.nombres || ' ' || d.apellidos, 'Sin asignar') AS docente, j.nombre AS jornada, "
         "k.nota AS nota, ev.puntuacion AS evaluacion "
         "FROM matriculas mt "
         "JOIN cursos c ON c.id = mt.curso_id "
         "JOIN materias m ON m.id = c.materia_id "
-        "JOIN docentes d ON d.id = c.docente_id "
+        "LEFT JOIN docentes d ON d.id = c.docente_id "
         "JOIN jornadas j ON j.id = c.jornada_id "
         "LEFT JOIN calificaciones k ON k.curso_id = c.id AND k.estudiante_id = mt.estudiante_id "
         "LEFT JOIN evaluaciones_docente ev ON ev.curso_id = c.id AND ev.estudiante_id = mt.estudiante_id "

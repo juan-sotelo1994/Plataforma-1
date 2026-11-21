@@ -1,4 +1,4 @@
-{% from '_alertas.html' import modal_errores, modal_avisos %}
+{% from '_alertas.html' import modal_errores, modal_avisos, confirmar_js %}
 <!DOCTYPE html>
 <html lang="es">
 
@@ -12,6 +12,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/consola.css') }}">
+    <style>
+        /* Desplegables del menú: el título se ve como los demás grupos y la flecha indica si está abierto */
+        .desplegable > summary { list-style: none; cursor: pointer; }
+        .desplegable > summary::-webkit-details-marker { display: none; }
+        .desplegable > summary::after { content: '\f107'; font-family: 'Font Awesome 6 Free'; font-weight: 900; margin-left: auto; opacity: .7; }
+        .desplegable[open] > summary::after { content: '\f106'; }
+        .desplegable > summary { display: flex; align-items: center; gap: 8px; }
+        .desplegable > summary i:first-child { width: 18px; text-align: center; }
+    </style>
 </head>
 
 {% set iconos = {'jornadas': 'clock', 'docentes': 'chalkboard-user', 'materias': 'book',
@@ -31,17 +40,36 @@
                     <h3 class="grupo-titulo"><i class="fa-solid fa-gauge"></i>Panel</h3>
                     <ul>
                         <li><a href="{{ url_for('admin.inicio') }}">Resumen</a></li>
-                        <li><a href="{{ url_for('admin.accesos') }}">Accesos de usuarios</a></li>
                     </ul>
                 </section>
-                <section class="grupo">
-                    <h3 class="grupo-titulo"><i class="fa-solid fa-graduation-cap"></i>Académico</h3>
+
+                <details class="grupo desplegable" {% if entidad in ['docentes', 'estudiantes'] or request.endpoint == 'admin.accesos' %}open{% endif %}>
+                    <summary class="grupo-titulo"><i class="fa-solid fa-users"></i>Usuarios</summary>
                     <ul>
-                        {% for clave, config in entidades.items() %}
-                        <li><a href="{{ url_for('admin.entidad', entidad=clave) }}"><i class="fa-solid fa-{{ iconos[clave] }}"></i>{{ config.titulo }}</a></li>
-                        {% endfor %}
+                        <li><a href="{{ url_for('admin.entidad', entidad='docentes') }}"><i class="fa-solid fa-chalkboard-user"></i>Docentes</a></li>
+                        <li><a href="{{ url_for('admin.entidad', entidad='estudiantes') }}"><i class="fa-solid fa-user-graduate"></i>Estudiantes</a></li>
+                        <li><a href="{{ url_for('admin.accesos') }}"><i class="fa-solid fa-user-lock"></i>Crear acceso</a></li>
                     </ul>
-                </section>
+                </details>
+
+                <details class="grupo desplegable" {% if entidad in ['cursos', 'materias', 'jornadas', 'calificaciones'] or request.endpoint == 'admin.curso_notas' %}open{% endif %}>
+                    <summary class="grupo-titulo"><i class="fa-solid fa-graduation-cap"></i>Cursos y materias</summary>
+                    <ul>
+                        <li><a href="{{ url_for('admin.entidad', entidad='cursos') }}"><i class="fa-solid fa-layer-group"></i>Cursos</a></li>
+                        <li><a href="{{ url_for('admin.entidad', entidad='materias') }}"><i class="fa-solid fa-book"></i>Materias</a></li>
+                        <li><a href="{{ url_for('admin.entidad', entidad='jornadas') }}"><i class="fa-solid fa-clock"></i>Jornadas</a></li>
+                        <li><a href="{{ url_for('admin.entidad', entidad='calificaciones') }}"><i class="fa-solid fa-star-half-stroke"></i>Calificaciones</a></li>
+                    </ul>
+                </details>
+
+                <details class="grupo desplegable" {% if entidad in ['aspirantes', 'requisitos', 'matriculas'] %}open{% endif %}>
+                    <summary class="grupo-titulo"><i class="fa-solid fa-user-plus"></i>Aspirantes y matrículas</summary>
+                    <ul>
+                        <li><a href="{{ url_for('admin.entidad', entidad='aspirantes') }}"><i class="fa-solid fa-user-plus"></i>Aspirantes</a></li>
+                        <li><a href="{{ url_for('admin.entidad', entidad='requisitos') }}"><i class="fa-solid fa-file-circle-check"></i>Requisitos</a></li>
+                        <li><a href="{{ url_for('admin.entidad', entidad='matriculas') }}"><i class="fa-solid fa-user-check"></i>Matrículas</a></li>
+                    </ul>
+                </details>
             </nav>
             <div class="sidebar-foot">
                 <strong>ADMIN</strong>
@@ -79,6 +107,7 @@
         </div>
     </div>
 
+    {{ confirmar_js() }}
     <script src="{{ url_for('static', filename='js/panel.js') }}" defer></script>
 </body>
 

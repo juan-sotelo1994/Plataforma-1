@@ -1,0 +1,14 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block title %}Notas · {{ curso.materia }}{% endblock %}
+
+{% block content %}
+
+<p><a href="{{ url_for('admin.entidad', entidad='calificaciones') }}">← Volver a calificaciones</a></p>
+
+<h1>{{ curso.materia }} · grupo {{ curso.grupo }}</h1>
+<p>Periodo {{ curso.periodo }} · Jornada {{ curso.jornada }} · Docente {{ curso.docente }} · {{ curso.creditos }} crédito(s) · Cupo {{ curso.cupo }}{% if curso.horario %} · {{ curso.horario }}{% endif %}</p>
+
+{% include '_notas_curso.html' %}
+
+{% endblock %}

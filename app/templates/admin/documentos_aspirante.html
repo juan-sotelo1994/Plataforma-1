@@ -23,7 +23,10 @@
             <span class="contador">El aspirante ya puede entrar al portal de estudiante.</span>
             {% elif cumple %}
             <form method="post" action="{{ url_for('admin.habilitar_aspirante', aspirante_id=aspirante.id) }}" style="display:inline;"
-                  onsubmit="return confirm('¿Habilitar el acceso al portal de estudiante? El aspirante entrará con el mismo correo y contraseña.');">
+                  data-confirmar="El aspirante entrará al portal de estudiante con el mismo correo y contraseña."
+                  data-confirmar-titulo="¿Habilitar el acceso al portal?"
+                  data-confirmar-boton="Sí, habilitar"
+                  data-confirmar-color="#43a047">
                 <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-user-check"></i> Habilitar acceso al portal</button>
             </form>
             {% else %}

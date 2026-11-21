@@ -1,0 +1,39 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block title %}Cursos{% endblock %}
+
+{% block content %}
+
+<h1>Cursos</h1>
+<p>Elija un ciclo para ver las materias que tiene asignadas.</p>
+
+<section class="bloque-admin">
+    <h2 style="display:flex; align-items:center; gap:12px;">
+        Ciclos
+        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-crear" style="margin-left:auto;">
+            <i class="fa-solid fa-plus"></i> Nuevo curso
+        </button>
+    </h2>
+
+    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:14px; margin-top:8px;">
+        {% for ciclo in tarjetas %}
+        <a href="{{ url_for('admin.vista_ciclo', ciclo=ciclo.numero) }}" class="tarjeta-ciclo"
+           style="display:block; padding:18px; border:1px solid var(--borde, #e2e8f0); border-radius:12px; background:#fff; text-decoration:none; color:inherit;">
+            <div style="font-size:20px; font-weight:700;">Ciclo {{ ciclo.numero }}</div>
+            <div class="contador" style="margin-top:6px;">{{ ciclo.materias }} materia(s) · {{ ciclo.cursos }} curso(s)</div>
+        </a>
+        {% endfor %}
+
+        {% if sin_ciclo %}
+        <a href="{{ url_for('admin.vista_ciclo', ciclo='sin') }}" class="tarjeta-ciclo"
+           style="display:block; padding:18px; border:1px dashed #cbd5e1; border-radius:12px; background:#fff; text-decoration:none; color:inherit;">
+            <div style="font-size:20px; font-weight:700;">Sin ciclo</div>
+            <div class="contador" style="margin-top:6px;">{{ sin_ciclo }} curso(s) por ubicar</div>
+        </a>
+        {% endif %}
+    </div>
+</section>
+
+{% include 'admin/_nuevo_curso.html' %}
+
+{% endblock %}
