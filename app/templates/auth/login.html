@@ -1,3 +1,4 @@
+{% from '_alertas.html' import modal_errores, modal_avisos %}
 {% extends 'auth/base_auth.html' %}
 
 {% block formulario %}
@@ -5,9 +6,10 @@
         <form class="login-form" method="post" action="{{ url_for('autenticar.login') }}" novalidate>
             <h1>¡Bienvenido de nuevo!</h1>
 
-            {% for categoria, mensaje in get_flashed_messages(with_categories=true) %}
-            <p class="login-aviso" role="status">{{ mensaje }}</p>
-            {% endfor %}
+            {% with mensajes = get_flashed_messages(with_categories=true) %}
+            {{ modal_errores(mensajes) }}
+            {{ modal_avisos(mensajes) }}
+            {% endwith %}
             {% if error %}
             <p class="login-error" role="alert">{{ error }}</p>
             {% endif %}

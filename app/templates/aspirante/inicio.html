@@ -1,0 +1,344 @@
+{% from '_alertas.html' import modal_errores, modal_avisos %}
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi inscripción | {{ empresa.nombre }}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/consola.css') }}">
+    <style>
+        .pasos { display: flex; gap: 10px; margin: 6px 0 18px; flex-wrap: wrap; }
+        .paso { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: #fff;
+                border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-weight: 600; }
+        .paso.bloqueado { opacity: .55; pointer-events: none; }
+        .paso span { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%;
+                     background: var(--surface-3); color: var(--text-2); font-size: 13px; }
+        .paso.activo { border-color: var(--accent); color: var(--accent); box-shadow: 0 6px 16px rgba(29,111,232,.15); }
+        .paso.activo span { background: var(--accent); color: #fff; }
+        .paso.listo span { background: #4caf6e; color: #fff; }
+        .pie-paso { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+                    padding: 18px 22px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+    </style>
+</head>
+
+<body>
+    <div class="panel">
+
+        <aside class="sidebar" aria-label="Menú de su inscripción">
+            <div class="sidebar-head">
+                <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="30" height="30">
+                <strong>{{ empresa.nombre }}</strong>
+            </div>
+            <nav class="sidebar-nav">
+                <section class="grupo">
+                    <h3 class="grupo-titulo"><i class="fa-solid fa-user-graduate"></i>Mi inscripción</h3>
+                    <ul>
+                        <li><a href="{{ url_for('aspirante.inicio', paso=1) }}"><i class="fa-solid fa-id-card"></i>Datos del aspirante</a></li>
+                        <li><a href="{{ url_for('aspirante.inicio', paso=2) }}"><i class="fa-solid fa-people-roof"></i>Padres y familia</a></li>
+                        <li><a href="{{ url_for('aspirante.inicio', paso=3) }}"><i class="fa-solid fa-folder-open"></i>Documentos</a></li>
+                        <li><a href="{{ url_for('aspirante.inicio', paso=4) }}"><i class="fa-solid fa-graduation-cap"></i>Datos académicos</a></li>
+                    </ul>
+                </section>
+            </nav>
+            <div class="sidebar-foot">
+                <strong>ASPIRANTE</strong>
+                <span>v1.0</span>
+            </div>
+        </aside>
+
+        <div class="main">
+            <header class="topbar">
+                <span class="topbar-title">Inscripción · {{ titulo_paso }}</span>
+                <div class="topbar-usuario">
+                    <a href="{{ url_for('web.inicio') }}">INICIO</a>
+                    <details class="usuario-menu">
+                        <summary>
+                            <span class="usuario-avatar"><i class="fa-solid fa-user"></i></span>
+                            {{ aspirante.nombres }} {{ aspirante.apellidos }}
+                            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                        </summary>
+                        <div class="usuario-panel">
+                            <div class="usuario-panel-cuerpo">
+                                <span class="avatar-grande"><i class="fa-solid fa-user"></i></span>
+                                <strong>{{ aspirante.nombres }} {{ aspirante.apellidos }}</strong>
+                                <span>{{ session.usuario }}</span>
+                                <span>Aspirante · Documento {{ aspirante.documento }}</span>
+                            </div>
+                            <div class="usuario-panel-pie">
+                                <a href="{{ url_for('autenticar.logout') }}">Salir</a>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </header>
+
+            <main class="content">
+                {% with mensajes = get_flashed_messages(with_categories=true) %}
+                {{ modal_errores(mensajes) }}
+                {{ modal_avisos(mensajes) }}
+                {% endwith %}
+
+                {% if todo_completo %}
+                {% if descargar %}
+                <style>.swal-titulo-grande{font-size:2.4rem !important;}.swal-texto-grande{font-size:1.4rem !important;}</style>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.10.8/sweetalert2.all.min.js"></script>
+                <script>
+                    window.addEventListener('load', function () {
+                        // Descarga el PDF en un marco oculto para no cambiar la página
+                        const marco = document.createElement('iframe');
+                        marco.style.display = 'none';
+                        marco.src = "{{ url_for('aspirante.comprobante') }}";
+                        document.body.appendChild(marco);
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'Registro completado',
+                            text: 'Su registro ha sido completado. Todos sus datos y documentos fueron guardados exitosamente.',
+                            confirmButtonText: 'Aceptar',
+                            confirmButtonColor: '#43a047',
+                            width: 640,
+                            padding: '2.6em',
+                            customClass: { title: 'swal-titulo-grande', htmlContainer: 'swal-texto-grande' }
+                        });
+                    });
+                </script>
+                {% endif %}
+                {% endif %}
+
+                {% if todo_completo %}
+                <div class="aviso-admin aviso-ok" role="status" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
+                    <span><strong>Su inscripción está completa y guardada.</strong> Descargue el comprobante en PDF para verificar sus datos.</span>
+                    <a href="{{ url_for('aspirante.comprobante') }}" download="comprobante_inscripcion.pdf" class="boton-admin boton-admin-primario">
+                        <i class="fa-solid fa-file-pdf"></i> Descargar comprobante (PDF)
+                    </a>
+                </div>
+                {% endif %}
+
+                <div class="pasos" aria-label="Pasos de la inscripción">
+                    <a href="{{ url_for('aspirante.inicio', paso=1) }}" class="paso {{ 'activo' if paso == 1 }} {{ 'listo' if completos[1] and paso != 1 }}">
+                        <span>{{ '✓' if completos[1] and paso != 1 else '1' }}</span> Datos del aspirante
+                    </a>
+                    <a href="{{ url_for('aspirante.inicio', paso=2) }}" class="paso {{ 'activo' if paso == 2 }} {{ 'listo' if completos[2] and paso != 2 }} {{ '' if completos[1] else 'bloqueado' }}">
+                        <span>{{ '✓' if completos[2] and paso != 2 else '2' }}</span> Padres y familia
+                    </a>
+                    <a href="{{ url_for('aspirante.inicio', paso=3) }}" class="paso {{ 'activo' if paso == 3 }} {{ 'listo' if completos[3] and paso != 3 }} {{ '' if completos[1] and completos[2] else 'bloqueado' }}">
+                        <span>{{ '✓' if completos[3] and paso != 3 else '3' }}</span> Documentos
+                    </a>
+                    <a href="{{ url_for('aspirante.inicio', paso=4) }}" class="paso {{ 'activo' if paso == 4 }} {{ 'listo' if completos[4] and paso != 4 }} {{ '' if completos[1] and completos[2] else 'bloqueado' }}">
+                        <span>{{ '✓' if completos[4] and paso != 4 else '4' }}</span> Datos académicos
+                    </a>
+                </div>
+
+                {% if paso in (3, 4) %}
+                <form method="post" action="{{ url_for('aspirante.guardar_paso', paso=paso) }}" enctype="multipart/form-data" class="bloque-admin bloque-formulario">
+                    <h2>{{ titulo_paso }}</h2>
+                    {% if paso == 4 %}
+                    <div class="formulario-admin">
+                        {% for columna, etiqueta, obligatorio in campos %}
+                        <label class="form-field">
+                            <span>{{ etiqueta }} {% if obligatorio %}<small>*</small>{% else %}<small>(opcional)</small>{% endif %}</span>
+                            {% if columna == 'grado_anterior' %}
+                            <select name="grado_anterior" required>
+                                <option value="">— Seleccione —</option>
+                                {% for grado in grados_anteriores %}
+                                <option value="{{ grado }}" {% if aspirante.grado_anterior == grado %}selected{% endif %}>{{ grado }}</option>
+                                {% endfor %}
+                            </select>
+                            {% else %}
+                            <input type="{{ 'number' if columna == 'anio_anterior' else 'text' }}" name="{{ columna }}"
+                                   {% if columna == 'anio_anterior' %}min="1990" max="2100"{% endif %}
+                                   value="{{ aspirante[columna] or '' }}" {% if obligatorio %}required{% endif %}>
+                            {% endif %}
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <p class="ayuda" style="margin:0 22px 14px;">Adjunte los documentos del colegio anterior y pulse <strong>Guardar solicitud</strong>.</p>
+                    {% else %}
+                    <p class="ayuda" style="margin:0 22px 14px;">Adjunte cada documento y pulse <strong>Guardar documentos</strong>. Los documentos aprobados no se pueden reemplazar.</p>
+                    {% endif %}
+                    <div class="tabla-contenedor" style="margin:0 22px;">
+                        <table class="tabla-admin">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Documento</th>
+                                    <th scope="col">Estado</th>
+                                    <th scope="col">Archivo actual</th>
+                                    <th scope="col">Adjuntar</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for requisito in requisitos %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ requisito.nombre }}</strong>
+                                        <span class="contador">{{ 'obligatorio' if requisito.obligatorio else 'opcional' }}</span>
+                                        {% if requisito.descripcion %}<br><small class="ayuda">{{ requisito.descripcion }}</small>{% endif %}
+                                    </td>
+                                    <td>
+                                        {% if not requisito.estado %}
+                                        <span class="nota-resumen">No subido</span>
+                                        {% elif requisito.estado == 'aprobado' %}
+                                        <span class="nota-resumen" style="background:var(--ok-bg); color:var(--ok);">Aprobado</span>
+                                        {% elif requisito.estado == 'rechazado' %}
+                                        <span class="nota-resumen" style="background:var(--danger-bg); color:var(--danger-dark);">Rechazado</span>
+                                        {% if requisito.observacion %}<br><small class="ayuda">Motivo: {{ requisito.observacion }}</small>{% endif %}
+                                        {% else %}
+                                        <span class="nota-resumen" style="background:var(--alerta-bg); color:var(--alerta);">En revisión</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ requisito.nombre_original or '—' }}</td>
+                                    <td>
+                                        {% if requisito.estado == 'aprobado' %}
+                                        <span class="ayuda">No se puede reemplazar</span>
+                                        {% else %}
+                                        <div class="subir-archivo">
+                                            <label class="boton-admin boton-admin-primario boton-archivo">
+                                                <i class="fa-solid fa-paperclip"></i> Seleccionar archivo
+                                                <input type="file" name="archivo_{{ requisito.id }}"
+                                                       accept="{{ '.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png' if requisito.formatos == 'imagen' else '.pdf,application/pdf' }}"
+                                                       onchange="this.closest('td').querySelector('.nombre-archivo').textContent = this.files[0] ? this.files[0].name : 'Ningún archivo seleccionado'">
+                                            </label>
+                                            <span class="nombre-archivo">Ningún archivo seleccionado</span>
+                                        </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pie-paso">
+                        <div>
+                            {% if faltan %}<small class="ayuda">Falta por subir: {{ faltan | join(', ') }}</small>
+                            {% else %}<strong style="color:var(--ok);">Todos los documentos obligatorios están subidos.</strong>{% endif %}
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <a href="{{ url_for('aspirante.inicio', paso=(3 if paso == 4 else 2)) }}" class="boton-admin">Anterior</a>
+                            <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-floppy-disk"></i> {{ 'Guardar solicitud' if paso == 4 else 'Guardar documentos' }}</button>
+                        </div>
+                    </div>
+                </form>
+
+                {% else %}
+                <form method="post" action="{{ url_for('aspirante.guardar_paso', paso=paso) }}" class="bloque-admin bloque-formulario">
+                    <h2>{{ titulo_paso }}</h2>
+                    <div class="formulario-admin" {% if paso == 2 %}style="grid-template-columns: repeat(3, minmax(0, 1fr));"{% endif %}>
+                        {% for columna, etiqueta, obligatorio in campos %}
+                        <label class="form-field">
+                            <span>{{ etiqueta }} {% if obligatorio %}<small>*</small>{% else %}<small>(opcional)</small>{% endif %}</span>
+                            {% if columna == 'tipo_documento' %}
+                            <select name="tipo_documento" required>
+                                <option value="">— Seleccione —</option>
+                                {% for tipo in tipos_documento %}
+                                <option value="{{ tipo }}" {% if aspirante.tipo_documento == tipo %}selected{% endif %}>{{ tipo }}</option>
+                                {% endfor %}
+                            </select>
+                            {% elif columna == 'grado_anterior' %}
+                            <select name="grado_anterior" required>
+                                <option value="">— Seleccione —</option>
+                                {% for grado in grados_anteriores %}
+                                <option value="{{ grado }}" {% if aspirante.grado_anterior == grado %}selected{% endif %}>{{ grado }}</option>
+                                {% endfor %}
+                            </select>
+                            {% elif columna == 'departamento' %}
+                            <select name="departamento" required>
+                                <option value="">— Seleccione —</option>
+                                {% for depto in departamentos %}
+                                <option value="{{ depto }}" {% if aspirante.departamento == depto %}selected{% endif %}>{{ depto }}</option>
+                                {% endfor %}
+                            </select>
+                            {% elif columna == 'sexo' %}
+                            <select name="sexo" required>
+                                <option value="">— Seleccione —</option>
+                                {% for sexo in sexos %}
+                                <option value="{{ sexo }}" {% if aspirante.sexo == sexo %}selected{% endif %}>{{ sexo }}</option>
+                                {% endfor %}
+                            </select>
+                            {% else %}
+                            <input type="{{ 'tel' if 'telefono' in columna or columna == 'celular' else 'text' }}" name="{{ columna }}"
+                                   value="{{ aspirante[columna] or ('Colombia' if columna == 'pais' else '') }}" {% if obligatorio %}required{% endif %}>
+                            {% endif %}
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% if paso == 2 %}
+                    <div class="formulario-admin" style="border-top:1px solid var(--line); grid-template-columns: repeat(3, minmax(0, 1fr));">
+                        <label class="form-field">
+                            <span>Número de hermanos <small>*</small></span>
+                            <select name="numero_hermanos" id="numero-hermanos" required>
+                                <option value="">— Seleccione —</option>
+                                {% for n in range(0, 16) %}
+                                <option value="{{ n }}" {% if aspirante.numero_hermanos == n %}selected{% endif %}>{{ n }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                    </div>
+                    <div id="hermanos" class="formulario-admin" style="grid-template-columns: repeat(3, minmax(0, 1fr)); padding-top:0;">
+                        {% for i in range(15) %}
+                        {% set h = aspirante.hermanos[i] if aspirante.hermanos|length > i else none %}
+                        <div class="hermano" data-indice="{{ i }}"
+                             style="grid-column: 1 / -1; display: {{ 'grid' if aspirante.numero_hermanos and i < aspirante.numero_hermanos else 'none' }}; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px;">
+                            <label class="form-field">
+                                <span>Nombre del hermano {{ i + 1 }}</span>
+                                <input type="text" name="hermano_nombre_{{ i }}" value="{{ h.nombre if h else '' }}">
+                            </label>
+                            <label class="form-field">
+                                <span>Edad</span>
+                                <input type="number" name="hermano_edad_{{ i }}" min="0" max="120" value="{{ h.edad if h else '' }}">
+                            </label>
+                            <label class="form-field">
+                                <span>Parentesco</span>
+                                <input type="text" name="hermano_parentesco_{{ i }}" placeholder="Hermano, hermana, media hermana..." value="{{ h.parentesco if h else '' }}">
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <script>
+                        (() => {
+                            const numero = document.getElementById('numero-hermanos');
+                            const bloques = document.querySelectorAll('#hermanos .hermano');
+                            const mostrar = () => {
+                                const n = parseInt(numero.value, 10) || 0;
+                                bloques.forEach((b) => {
+                                    b.style.display = parseInt(b.dataset.indice, 10) < n ? 'grid' : 'none';
+                                });
+                            };
+                            numero.addEventListener('input', mostrar);
+                            mostrar();
+                        })();
+                    </script>
+                    {% endif %}
+
+                    {% if paso == 1 %}
+                    <p class="ayuda" style="margin:0 22px 14px;">Correo de acceso: {{ aspirante.correo }}</p>
+                    {% endif %}
+                    <div class="pie-paso">
+                        <div>
+                            {% if faltan %}<small class="ayuda">Falta por completar: {{ faltan | join(', ') }}</small>{% endif %}
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            {% if paso == 2 %}<a href="{{ url_for('aspirante.inicio', paso=1) }}" class="boton-admin">Anterior</a>{% endif %}
+                            <button type="submit" class="boton-admin boton-admin-primario">
+                                {% if paso == 1 %}<i class="fa-solid fa-arrow-right"></i> Guardar y continuar{% else %}<i class="fa-solid fa-arrow-right"></i> Guardar y continuar a documentos{% endif %}
+                            </button>
+                        </div>
+                    </div>
+                </form>
+                {% endif %}
+            </main>
+
+            <footer class="statusbar">
+                <span>{{ empresa.nombre }}</span>
+                <span>Sesión: {{ session.usuario }}</span>
+            </footer>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/panel.js') }}" defer></script>
+</body>
+
+</html>

@@ -1,0 +1,103 @@
+{% extends 'panel/base_panel.html' %}
+
+{% block title %}Actualizar mis datos{% endblock %}
+
+{% block content %}
+
+<h1>Actualizar mis datos</h1>
+<p>Revise sus datos de contacto y de su familia. Los campos con <strong>*</strong> son obligatorios. El documento y el correo no se pueden cambiar desde aquí.</p>
+
+<form method="post" action="{{ url_for('dashboard.datos') }}" class="bloque-admin bloque-formulario">
+    <section>
+        <h2>Mis datos</h2>
+        <div class="formulario-admin">
+            <label class="form-field">
+                <span>Nombres <small>*</small></span>
+                <input type="text" name="nombres" value="{{ estudiante.nombres or '' }}" required>
+            </label>
+            <label class="form-field">
+                <span>Apellidos <small>*</small></span>
+                <input type="text" name="apellidos" value="{{ estudiante.apellidos or '' }}" required>
+            </label>
+            <label class="form-field">
+                <span>Documento</span>
+                <input type="text" value="{{ estudiante.documento or '' }}" disabled>
+            </label>
+            <label class="form-field">
+                <span>Correo</span>
+                <input type="text" value="{{ estudiante.correo or '' }}" disabled>
+            </label>
+            <label class="form-field">
+                <span>Celular <small>*</small></span>
+                <input type="tel" name="celular" value="{{ estudiante.celular or '' }}" required>
+            </label>
+            <label class="form-field">
+                <span>Teléfono <small>(opcional)</small></span>
+                <input type="tel" name="telefono" value="{{ estudiante.telefono or '' }}">
+            </label>
+            <label class="form-field">
+                <span>País</span>
+                <input type="text" name="pais" value="{{ estudiante.pais or 'Colombia' }}">
+            </label>
+            <label class="form-field">
+                <span>Departamento</span>
+                <select name="departamento">
+                    <option value="">— Seleccione —</option>
+                    {% for depto in departamentos %}
+                    <option value="{{ depto }}" {% if estudiante.departamento == depto %}selected{% endif %}>{{ depto }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="form-field">
+                <span>Municipio <small>*</small></span>
+                <input type="text" name="ciudad" value="{{ estudiante.ciudad or '' }}" required>
+            </label>
+            <label class="form-field">
+                <span>Dirección <small>*</small></span>
+                <input type="text" name="direccion" value="{{ estudiante.direccion or '' }}" required>
+            </label>
+        </div>
+    </section>
+
+    <section style="border-top:1px solid var(--line);">
+        <h2>Padre</h2>
+        <div class="formulario-admin">
+            <label class="form-field">
+                <span>Nombre completo <small>*</small></span>
+                <input type="text" name="nombre_padre" value="{{ estudiante.nombre_padre or '' }}" required>
+            </label>
+            <label class="form-field">
+                <span>Documento</span>
+                <input type="text" name="documento_padre" value="{{ estudiante.documento_padre or '' }}">
+            </label>
+            <label class="form-field">
+                <span>Contacto <small>*</small></span>
+                <input type="tel" name="telefono_padre" value="{{ estudiante.telefono_padre or '' }}" required>
+            </label>
+        </div>
+    </section>
+
+    <section style="border-top:1px solid var(--line);">
+        <h2>Madre</h2>
+        <div class="formulario-admin">
+            <label class="form-field">
+                <span>Nombre completo <small>*</small></span>
+                <input type="text" name="nombre_madre" value="{{ estudiante.nombre_madre or '' }}" required>
+            </label>
+            <label class="form-field">
+                <span>Documento</span>
+                <input type="text" name="documento_madre" value="{{ estudiante.documento_madre or '' }}">
+            </label>
+            <label class="form-field">
+                <span>Contacto <small>*</small></span>
+                <input type="tel" name="telefono_madre" value="{{ estudiante.telefono_madre or '' }}" required>
+            </label>
+        </div>
+    </section>
+
+    <div class="acciones-form" style="padding:18px 22px;">
+        <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-floppy-disk"></i> Guardar cambios</button>
+    </div>
+</form>
+
+{% endblock %}

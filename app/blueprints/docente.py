@@ -1,8 +1,8 @@
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_from_directory, session, url_for
 
-from db import get_db
-from hojas import HOJAS_DIR, guardar_hoja
-from seguridad import requiere_rol
+from nucleo.db import get_db
+from servicios.hojas import HOJAS_DIR, guardar_hoja
+from nucleo.seguridad import requiere_rol
 
 
 docente_bp = Blueprint('docente', __name__, url_prefix='/docente')

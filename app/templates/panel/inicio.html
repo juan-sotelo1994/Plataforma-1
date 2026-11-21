@@ -64,6 +64,7 @@
             </summary>
             <dl class="tabla-datos">
                 <div><dt>Docente</dt><dd>{{ curso.docente }}</dd></div>
+                <div><dt>Horario</dt><dd>{{ curso.horario or 'Por definir' }}</dd></div>
                 <div><dt>Jornada</dt><dd>{{ curso.jornada }}</dd></div>
                 <div><dt>Créditos</dt><dd>{{ curso.creditos }}</dd></div>
                 <div><dt>Nota</dt><dd>{{ '%.1f' % curso.nota if curso.nota is not none else 'Sin calificar' }}</dd></div>

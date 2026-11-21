@@ -1,11 +1,14 @@
+import io
 import sqlite3
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, send_from_directory, url_for
 from werkzeug.security import generate_password_hash
 
-from db import get_db
-from hojas import guardar_hoja
-from seguridad import requiere_rol
+from nucleo.db import get_db
+from servicios.documentos import DOCS_DIR
+from servicios.comprobante import generar_comprobante
+from servicios.hojas import guardar_hoja
+from nucleo.seguridad import requiere_rol
 
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -50,19 +53,27 @@ ENTIDADES = {
         'titulo': 'Materias',
         'singular': 'materia',
         'tabla': 'materias',
-        'consulta': 'SELECT id, codigo, nombre, creditos FROM materias ORDER BY nombre',
-        'columnas': [('Código', 'codigo'), ('Nombre', 'nombre'), ('Créditos', 'creditos')],
+        'consulta': ("SELECT m.id, m.codigo, m.nombre, m.creditos, m.ciclo, j.nombre AS jornada "
+                     "FROM materias m LEFT JOIN jornadas j ON j.id = m.jornada_id "
+                     "ORDER BY m.ciclo, m.nombre"),
+        'columnas': [('Código', 'codigo'), ('Nombre', 'nombre'), ('Créditos', 'creditos'),
+                     ('Ciclo', 'ciclo'), ('Jornada', 'jornada')],
         'campos': [
             {'nombre': 'codigo', 'etiqueta': 'Código', 'requerido': True, 'ejemplo': 'SIS-101'},
             {'nombre': 'nombre', 'etiqueta': 'Nombre', 'requerido': True},
             {'nombre': 'creditos', 'etiqueta': 'Créditos', 'tipo': 'number', 'ejemplo': '3'},
+            {'nombre': 'ciclo', 'etiqueta': 'Ciclo (semestre)', 'tipo': 'number', 'requerido': True,
+             'minimo': 1, 'maximo': 10, 'ejemplo': '1', 'ayuda': 'Semestre en el que se dicta, de 1 a 10.'},
+            {'nombre': 'jornada_id', 'etiqueta': 'Jornada', 'tipo': 'select',
+             'opciones_sql': 'SELECT id, nombre AS texto FROM jornadas ORDER BY nombre',
+             'ayuda': 'Jornada en la que se dicta la materia.'},
         ],
     },
     'cursos': {
         'titulo': 'Cursos',
         'singular': 'curso',
         'tabla': 'cursos',
-        'consulta': ("SELECT c.id, m.nombre AS materia, c.grupo, c.periodo, "
+        'consulta': ("SELECT c.id, m.nombre AS materia, c.grupo, c.periodo, c.horario, "
                      "d.nombres || ' ' || d.apellidos AS docente, j.nombre AS jornada, c.cupo "
                      "FROM cursos c "
                      "JOIN materias m ON m.id = c.materia_id "
@@ -70,7 +81,7 @@ ENTIDADES = {
                      "JOIN jornadas j ON j.id = c.jornada_id "
                      "ORDER BY c.periodo DESC, m.nombre, c.grupo"),
         'columnas': [('Materia', 'materia'), ('Grupo', 'grupo'), ('Periodo', 'periodo'),
-                     ('Docente', 'docente'), ('Jornada', 'jornada'), ('Cupo', 'cupo')],
+                     ('Docente', 'docente'), ('Jornada', 'jornada'), ('Horario', 'horario'), ('Cupo', 'cupo')],
         'campos': [
             {'nombre': 'materia_id', 'etiqueta': 'Materia', 'tipo': 'select', 'requerido': True,
              'opciones_sql': 'SELECT id, nombre || \' (\' || codigo || \')\' AS texto FROM materias ORDER BY nombre'},
@@ -81,6 +92,8 @@ ENTIDADES = {
              'opciones_sql': 'SELECT id, nombre AS texto FROM jornadas ORDER BY nombre'},
             {'nombre': 'periodo', 'etiqueta': 'Periodo', 'requerido': True, 'ejemplo': '2026-B'},
             {'nombre': 'grupo', 'etiqueta': 'Grupo', 'requerido': True, 'ejemplo': '01'},
+            {'nombre': 'horario', 'etiqueta': 'Horario', 'ejemplo': 'Lun y mié 6:00 a. m. – 8:00 a. m.',
+             'ayuda': 'Días y horas en que se dicta el curso.'},
             {'nombre': 'cupo', 'etiqueta': 'Cupo', 'tipo': 'number', 'ejemplo': '30'},
         ],
     },
@@ -155,6 +168,56 @@ ENTIDADES = {
                               "FROM estudiantes ORDER BY apellidos, nombres")},
         ],
     },
+    'requisitos': {
+        'titulo': 'Requisitos',
+        'singular': 'requisito',
+        'tabla': 'requisitos',
+        'consulta': ("SELECT id, nombre, descripcion, "
+                     "CASE WHEN obligatorio = 1 THEN 'Sí' ELSE 'No' END AS obligatorio, "
+                     "CASE WHEN formatos = 'imagen' THEN 'PDF, JPG o PNG' ELSE 'PDF' END AS formatos, "
+                     "CASE WHEN activo = 1 THEN 'Sí' ELSE 'No' END AS activo "
+                     "FROM requisitos ORDER BY activo DESC, obligatorio DESC, nombre"),
+        'columnas': [('Requisito', 'nombre'), ('Descripción', 'descripcion'),
+                     ('Formato', 'formatos'), ('Obligatorio', 'obligatorio'), ('Se pide', 'activo')],
+        'campos': [
+            {'nombre': 'nombre', 'etiqueta': 'Nombre del requisito', 'requerido': True,
+             'ejemplo': 'Documento de identidad'},
+            {'nombre': 'descripcion', 'etiqueta': 'Descripción', 'tipo': 'textarea',
+             'ayuda': 'Qué debe contener el documento. Se muestra al aspirante.'},
+            {'nombre': 'formatos', 'etiqueta': 'Formato del archivo', 'tipo': 'select', 'requerido': True,
+             'opciones_sql': "SELECT 'pdf' AS id, 'PDF' AS texto UNION ALL SELECT 'imagen', 'PDF, JPG o PNG'",
+             'ayuda': 'Las fotografías se suben como imagen; los demás documentos como PDF.'},
+            {'nombre': 'obligatorio', 'etiqueta': 'Obligatorio', 'tipo': 'select', 'requerido': True,
+             'opciones_sql': "SELECT 1 AS id, 'Sí' AS texto UNION ALL SELECT 0, 'No'",
+             'ayuda': 'Si es obligatorio, el aspirante no cumple hasta que se apruebe.'},
+            {'nombre': 'activo', 'etiqueta': 'Se pide al aspirante', 'tipo': 'select', 'requerido': True,
+             'opciones_sql': "SELECT 1 AS id, 'Sí' AS texto UNION ALL SELECT 0, 'No'",
+             'ayuda': 'Si es No, el documento deja de pedirse, pero no se borra lo ya subido.'},
+        ],
+    },
+    'aspirantes': {
+        'titulo': 'Aspirantes',
+        'singular': 'aspirante',
+        'tabla': 'aspirantes',
+        'solo_lectura': True,  # se inscriben desde la página pública
+        'consulta': ("SELECT a.id, a.nombres || ' ' || a.apellidos AS nombre, a.documento, a.correo, "
+                     "a.programa, j.nombre AS jornada, a.estado, "
+                     "(SELECT COUNT(*) FROM requisitos r JOIN documentos_aspirante d "
+                     "   ON d.requisito_id = r.id AND d.aspirante_id = a.id "
+                     " WHERE r.obligatorio = 1 AND d.estado = 'aprobado') || ' de ' || "
+                     "(SELECT COUNT(*) FROM requisitos WHERE obligatorio = 1 AND activo = 1) || ' aprobados' AS documentos, "
+                     "a.creado_en, a.estudiante_id, (a.estado = 'habilitado') AS habilitado, "
+                     "(SELECT COUNT(*) FROM requisitos r JOIN documentos_aspirante d "
+                     "   ON d.requisito_id = r.id AND d.aspirante_id = a.id "
+                     " WHERE r.obligatorio = 1 AND r.activo = 1 AND d.estado = 'aprobado') = "
+                     "(SELECT COUNT(*) FROM requisitos WHERE obligatorio = 1 AND activo = 1) AS cumple "
+                     "FROM aspirantes a LEFT JOIN jornadas j ON j.id = a.jornada_id "
+                     "ORDER BY a.creado_en DESC"),
+        'columnas': [('Nombre', 'nombre'), ('Documento', 'documento'), ('Correo', 'correo'),
+                     ('Programa', 'programa'), ('Jornada', 'jornada'), ('Estado', 'estado'),
+                     ('Documentos obligatorios', 'documentos'), ('Inscrito el', 'creado_en')],
+        'campos': [],
+    },
 }
 
 # Tipos de persona que pueden tener una cuenta: (tabla, etiqueta)
@@ -224,9 +287,12 @@ def _valores_del_formulario(config):
 
         if campo.get('tipo') == 'number':
             try:
-                valores[campo['nombre']] = int(bruto or 0)
+                valor = int(bruto or 0)
             except ValueError:
                 raise ValueError(f'{etiqueta} debe ser un número entero.')
+            if 'minimo' in campo and not campo['minimo'] <= valor <= campo['maximo']:
+                raise ValueError(f'{etiqueta} debe estar entre {campo["minimo"]} y {campo["maximo"]}.')
+            valores[campo['nombre']] = valor
         elif campo.get('tipo') == 'decimal':
             try:
                 valor = float(bruto.replace(',', '.')) if bruto else None
@@ -236,7 +302,11 @@ def _valores_del_formulario(config):
                 raise ValueError(f'{etiqueta} debe estar entre {campo["minimo"]} y {campo["maximo"]}.')
             valores[campo['nombre']] = valor
         elif campo.get('tipo') == 'select':
-            valores[campo['nombre']] = int(bruto) if bruto else None
+            # Los menús pueden devolver números (ids) o textos (por ejemplo, 'pdf' o 'imagen')
+            if not bruto:
+                valores[campo['nombre']] = None
+            else:
+                valores[campo['nombre']] = int(bruto) if bruto.isdigit() else bruto
         else:
             valores[campo['nombre']] = bruto or None
     return valores
@@ -286,6 +356,8 @@ def inicio():
 def entidad(entidad):
     config = _config(entidad)
     db = get_db()
+    if config.get('solo_lectura') and request.method == 'POST':
+        abort(405)
 
     if request.method == 'POST':
         try:
@@ -319,7 +391,8 @@ def entidad(entidad):
     materias_opciones = _opciones({'opciones_sql': SQL_MATERIAS_OPCIONES}) if entidad == 'docentes' else None
     return render_template('admin/entidad.html', entidad=entidad, config=config,
                            filas=filas, campos=campos, entidades=ENTIDADES,
-                           materias_opciones=materias_opciones)
+                           materias_opciones=materias_opciones, seleccionadas=set(),
+                           hoja=None, editando=False, registro_id=None)
 
 
 def _materias_del_formulario():
@@ -346,6 +419,8 @@ def _actualizar_extras_docente(docente_id, materias):
 @requiere_admin
 def editar(entidad, registro_id):
     config = _config(entidad)
+    if config.get('solo_lectura'):
+        abort(404)
     db = get_db()
     registro = db.execute(f'SELECT * FROM {config["tabla"]} WHERE id = ?', (registro_id,)).fetchone()
     if registro is None:
@@ -402,10 +477,11 @@ def editar(entidad, registro_id):
         hoja = db.execute(
             'SELECT nombre_original FROM hojas_de_vida WHERE docente_id = ?', (registro_id,)).fetchone()
 
-    return render_template('admin/editar.html', entidad=entidad, config=config, campos=campos,
-                           registro_id=registro_id, entidades=ENTIDADES,
-                           materias_opciones=materias_opciones, seleccionadas=seleccionadas or set(),
-                           hoja=hoja)
+    filas = db.execute(config['consulta']).fetchall()
+    return render_template('admin/entidad.html', entidad=entidad, config=config, filas=filas,
+                           campos=campos, entidades=ENTIDADES, materias_opciones=materias_opciones,
+                           seleccionadas=seleccionadas or set(), hoja=hoja,
+                           editando=True, registro_id=registro_id)
 
 
 @admin_bp.route('/<entidad>/<int:registro_id>/eliminar', methods=['POST'])
@@ -481,3 +557,149 @@ def eliminar_acceso(cuenta_id):
     db.commit()
     flash('Acceso eliminado.', 'ok')
     return redirect(url_for('admin.accesos'))
+
+
+@admin_bp.route('/aspirantes/<int:aspirante_id>/documentos')
+@requiere_admin
+def documentos_aspirante(aspirante_id):
+    db = get_db()
+    aspirante = db.execute(
+        "SELECT id, nombres, apellidos, documento, correo, programa, estado, estudiante_id "
+        "FROM aspirantes WHERE id = ?",
+        (aspirante_id,)).fetchone()
+    if aspirante is None:
+        abort(404)
+
+    requisitos = db.execute(
+        "SELECT r.id AS requisito_id, r.nombre, r.obligatorio, r.seccion, d.id AS documento_id, "
+        "d.nombre_original, d.subido_en, d.estado, d.observacion "
+        "FROM requisitos r "
+        "LEFT JOIN documentos_aspirante d ON d.requisito_id = r.id AND d.aspirante_id = ? "
+        "WHERE r.activo = 1 ORDER BY r.id", (aspirante_id,)).fetchall()
+    cumple = all(fila['estado'] == 'aprobado' for fila in requisitos if fila['obligatorio'])
+
+    return render_template('admin/documentos_aspirante.html', aspirante=aspirante,
+                           requisitos=requisitos, cumple=cumple, entidades=ENTIDADES)
+
+
+@admin_bp.route('/aspirantes/<int:aspirante_id>/documentos/<int:documento_id>/revisar', methods=['POST'])
+@requiere_admin
+def revisar_documento(aspirante_id, documento_id):
+    estado = request.form.get('estado', '')
+    observacion = request.form.get('observacion', '').strip()[:500] or None
+    if estado not in ('aprobado', 'rechazado'):
+        flash('Seleccione si el documento se aprueba o se rechaza.', 'error')
+    elif estado == 'rechazado' and not observacion:
+        flash('Escriba el motivo del rechazo para que el aspirante lo vea.', 'error')
+    else:
+        db = get_db()
+        cursor = db.execute(
+            'UPDATE documentos_aspirante SET estado = ?, observacion = ? WHERE id = ? AND aspirante_id = ?',
+            (estado, observacion if estado == 'rechazado' else None, documento_id, aspirante_id))
+        db.commit()
+        if cursor.rowcount:
+            flash('Revisión guardada.', 'ok')
+        else:
+            flash('El documento no existe.', 'error')
+    return redirect(url_for('admin.documentos_aspirante', aspirante_id=aspirante_id))
+
+
+@admin_bp.route('/documentos/<int:documento_id>/descargar')
+@requiere_admin
+def descargar_documento(documento_id):
+    doc = get_db().execute(
+        'SELECT nombre_original, nombre_archivo FROM documentos_aspirante WHERE id = ?',
+        (documento_id,)).fetchone()
+    if doc is None:
+        abort(404)
+    return send_from_directory(DOCS_DIR, doc['nombre_archivo'], as_attachment=True,
+                               download_name=doc['nombre_original'])
+
+
+@admin_bp.route('/aspirantes/<int:aspirante_id>/formulario')
+@requiere_admin
+def formulario_aspirante(aspirante_id):
+    from blueprints.aspirante import _datos_aspirante, _requisitos_con_documento
+
+    if get_db().execute('SELECT 1 FROM aspirantes WHERE id = ?', (aspirante_id,)).fetchone() is None:
+        abort(404)
+    datos = _datos_aspirante(aspirante_id, con_prefill=False)
+    documentos = [dict(fila) for fila in _requisitos_con_documento(aspirante_id)]
+    pdf = generar_comprobante(datos, datos['hermanos'], documentos)
+    return send_file(io.BytesIO(pdf), mimetype='application/pdf', as_attachment=True,
+                     download_name='formulario_inscripcion.pdf')
+
+
+@admin_bp.route('/aspirantes/<int:aspirante_id>/habilitar', methods=['POST'])
+@requiere_admin
+def habilitar_aspirante(aspirante_id):
+    from blueprints.aspirante import _pasos_completos, _requisitos_con_documento
+
+    db = get_db()
+    aspirante = db.execute('SELECT * FROM aspirantes WHERE id = ?', (aspirante_id,)).fetchone()
+    if aspirante is None:
+        abort(404)
+    documentos_ok = all(r['estado'] == 'aprobado' for r in _requisitos_con_documento(aspirante_id) if r['obligatorio'])
+    if not (documentos_ok and all(_pasos_completos(aspirante_id).values())):
+        flash('El aspirante todavía no cumple con los requisitos obligatorios.', 'error')
+        return redirect(url_for('admin.documentos_aspirante', aspirante_id=aspirante_id))
+
+    if db.execute("SELECT 1 FROM usuarios WHERE correo = ? AND rol = 'estudiante'",
+                  (aspirante['correo'],)).fetchone():
+        flash('Este aspirante ya tiene acceso habilitado.', 'error')
+        return redirect(url_for('admin.documentos_aspirante', aspirante_id=aspirante_id))
+    if db.execute("SELECT 1 FROM usuarios WHERE correo = ? AND rol <> 'estudiante'",
+                  (aspirante['correo'],)).fetchone():
+        flash('Ese correo ya tiene una cuenta en la plataforma. Use otro correo para el aspirante.', 'error')
+        return redirect(url_for('admin.documentos_aspirante', aspirante_id=aspirante_id))
+
+    try:
+        # Si el aspirante ya tuvo registro de estudiante, se reutiliza; si no, se vincula o se crea
+        estudiante_id = aspirante['estudiante_id']
+        existente = None if estudiante_id else db.execute(
+            'SELECT id FROM estudiantes WHERE documento = ?', (aspirante['documento'],)).fetchone()
+        if estudiante_id:
+            mensaje = 'Acceso habilitado de nuevo.'
+        elif existente:
+            estudiante_id = existente['id']
+            mensaje = 'Acceso habilitado. Se vinculó al registro de estudiante que ya existía con ese documento.'
+        else:
+            cursor = db.execute(
+                'INSERT INTO estudiantes (codigo, nombres, apellidos, documento, correo, programa, jornada_id) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (f'EST{aspirante_id:06d}', aspirante['nombres'], aspirante['apellidos'], aspirante['documento'],
+                 aspirante['correo'], aspirante['programa'] or None, aspirante['jornada_id']))
+            estudiante_id = cursor.lastrowid
+            mensaje = 'Acceso habilitado. El aspirante ya puede entrar a su portal de estudiante.'
+        # Los datos de contacto y de familia se copian del aspirante al registro de estudiante
+        copia = {c: aspirante[c] for c in ('telefono', 'celular', 'direccion', 'pais', 'departamento', 'ciudad', 'nombre_padre', 'telefono_padre', 'documento_padre', 'nombre_madre', 'telefono_madre', 'documento_madre')}
+        db.execute('UPDATE estudiantes SET ' + ', '.join(f'{c} = ?' for c in copia) + ' WHERE id = ?',
+                   [copia[c] for c in copia] + [estudiante_id])
+        # La cuenta usa el mismo correo y la misma contraseña del aspirante
+        db.execute('INSERT INTO usuarios (correo, contrasena_hash, rol, estudiante_id) VALUES (?, ?, ?, ?)',
+                   (aspirante['correo'], aspirante['contrasena_hash'], 'estudiante', estudiante_id))
+        db.execute("UPDATE aspirantes SET estado = 'habilitado', estudiante_id = ? WHERE id = ?",
+                   (estudiante_id, aspirante_id))
+        db.commit()
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash('No se pudo habilitar el acceso. Revise que el correo y el documento no estén repetidos.', 'error')
+        return redirect(url_for('admin.documentos_aspirante', aspirante_id=aspirante_id))
+
+    flash(mensaje, 'ok')
+    return redirect(url_for('admin.documentos_aspirante', aspirante_id=aspirante_id))
+
+
+@admin_bp.route('/aspirantes/<int:aspirante_id>/deshabilitar', methods=['POST'])
+@requiere_admin
+def deshabilitar_aspirante(aspirante_id):
+    db = get_db()
+    aspirante = db.execute('SELECT correo FROM aspirantes WHERE id = ?', (aspirante_id,)).fetchone()
+    if aspirante is None:
+        abort(404)
+    # Quita la cuenta de estudiante y bloquea también el acceso como aspirante
+    db.execute("DELETE FROM usuarios WHERE correo = ? AND rol = 'estudiante'", (aspirante['correo'],))
+    db.execute("UPDATE aspirantes SET estado = 'deshabilitado' WHERE id = ?", (aspirante_id,))
+    db.commit()
+    flash('Acceso deshabilitado. El aspirante ya no puede entrar a la plataforma.', 'ok')
+    return redirect(url_for('admin.entidad', entidad='aspirantes'))

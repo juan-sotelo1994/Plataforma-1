@@ -1,0 +1,112 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block title %}Documentos de {{ aspirante.nombres }}{% endblock %}
+
+{% block content %}
+
+<p><a href="{{ url_for('admin.entidad', entidad='aspirantes') }}">← Volver a aspirantes</a> &nbsp;·&nbsp; <a href="{{ url_for('admin.formulario_aspirante', aspirante_id=aspirante.id) }}" download><i class="fa-solid fa-file-pdf"></i> Descargar formulario (PDF)</a></p>
+<h1>Documentos de {{ aspirante.nombres }} {{ aspirante.apellidos }}</h1>
+<p>Documento {{ aspirante.documento }} · {{ aspirante.correo }}</p>
+
+<section class="bloque-admin">
+    <h2 style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        Acceso al portal de estudiante
+        {% if aspirante.estudiante_id %}
+        <span class="nota-resumen" style="background:var(--ok-bg); color:var(--ok);">Habilitado</span>
+        {% elif cumple %}
+        <span class="nota-resumen" style="background:var(--ok-bg); color:var(--ok);">Listo para habilitar</span>
+        {% else %}
+        <span class="nota-resumen" style="background:var(--alerta-bg); color:var(--alerta);">Pendiente</span>
+        {% endif %}
+        <span style="margin-left:auto;">
+            {% if aspirante.estudiante_id %}
+            <span class="contador">El aspirante ya puede entrar al portal de estudiante.</span>
+            {% elif cumple %}
+            <form method="post" action="{{ url_for('admin.habilitar_aspirante', aspirante_id=aspirante.id) }}" style="display:inline;"
+                  onsubmit="return confirm('¿Habilitar el acceso al portal de estudiante? El aspirante entrará con el mismo correo y contraseña.');">
+                <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-user-check"></i> Habilitar acceso al portal</button>
+            </form>
+            {% else %}
+            <span class="contador">Se habilita cuando todos los documentos obligatorios estén aprobados.</span>
+            {% endif %}
+        </span>
+    </h2>
+</section>
+
+{% if not requisitos %}
+<section class="bloque-admin">
+    <p class="vacio">No hay requisitos registrados. Créelos en la sección Requisitos.</p>
+</section>
+{% endif %}
+
+{% for clave, titulo in [('aspirante', 'Documentos del aspirante'), ('padres', 'Documentos de los padres y familia'), ('academico', 'Datos académicos: documentos del colegio anterior')] %}
+{% set grupo = requisitos | selectattr('seccion', 'equalto', clave) | list %}
+{% if grupo %}
+<section class="bloque-admin">
+    <h2>{{ titulo }}</h2>
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Requisito</th>
+                    <th scope="col">Documento</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Revisión</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for requisito in grupo %}
+                <tr>
+                    <td>
+                        <strong>{{ requisito.nombre }}</strong>
+                        <span class="contador">{{ 'obligatorio' if requisito.obligatorio else 'opcional' }}</span>
+                    </td>
+                    <td>
+                        {% if requisito.documento_id %}
+                        <a href="{{ url_for('admin.descargar_documento', documento_id=requisito.documento_id) }}">
+                            <i class="fa-solid fa-file-pdf"></i> {{ requisito.nombre_original }}
+                        </a>
+                        <br><small class="ayuda">Subido el {{ requisito.subido_en }}</small>
+                        {% else %}
+                        <span class="vacio">No ha subido el documento</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not requisito.documento_id %}
+                        <span class="nota-resumen">Pendiente</span>
+                        {% elif requisito.estado == 'aprobado' %}
+                        <span class="nota-resumen" style="background:var(--ok-bg); color:var(--ok);">Aprobado</span>
+                        {% elif requisito.estado == 'rechazado' %}
+                        <span class="nota-resumen" style="background:var(--danger-bg); color:var(--danger-dark);">Rechazado</span>
+                        {% if requisito.observacion %}<br><small class="ayuda">Motivo: {{ requisito.observacion }}</small>{% endif %}
+                        {% else %}
+                        <span class="nota-resumen" style="background:var(--alerta-bg); color:var(--alerta);">En revisión</span>
+                        {% endif %}
+                    </td>
+                    <td style="min-width:300px;">
+                        {% if requisito.documento_id %}
+                        <form method="post" action="{{ url_for('admin.revisar_documento', aspirante_id=aspirante.id, documento_id=requisito.documento_id) }}"
+                              style="display:flex; flex-direction:column; gap:8px;">
+                            <select name="estado" required style="height:36px; padding:0 8px;">
+                                <option value="">— Decisión —</option>
+                                <option value="aprobado">Aprobar</option>
+                                <option value="rechazado">Rechazar</option>
+                            </select>
+                            <textarea name="observacion" rows="2" maxlength="500"
+                                      placeholder="Motivo (obligatorio si se rechaza)" style="padding:8px; font:inherit;"></textarea>
+                            <button type="submit" class="boton-admin boton-admin-primario">Guardar revisión</button>
+                        </form>
+                        {% else %}
+                        <span class="ayuda">Espere a que el aspirante suba el documento.</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+{% endfor %}
+
+{% endblock %}

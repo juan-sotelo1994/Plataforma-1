@@ -27,6 +27,11 @@
         });
     });
 
+    // Ventanas que deben abrirse al cargar la página (por ejemplo, editar un registro)
+    document.querySelectorAll('dialog[data-auto-abrir]').forEach((ventana) => {
+        if (ventana.showModal) ventana.showModal();
+    });
+
     document.querySelectorAll('dialog').forEach((ventana) => {
         ventana.querySelectorAll('[data-cerrar]').forEach((b) => {
             b.addEventListener('click', () => ventana.close());

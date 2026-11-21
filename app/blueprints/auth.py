@@ -4,8 +4,8 @@ import os
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 
-from db import get_db
-from seguridad import destino_por_rol
+from nucleo.db import get_db
+from nucleo.seguridad import destino_por_rol
 
 
 autenticar = Blueprint('autenticar', __name__, url_prefix='/acceso')
@@ -34,6 +34,12 @@ def _autenticar(correo, contrasena):
     if fila and check_password_hash(fila['contrasena_hash'], contrasena):
         persona_id = fila['docente_id'] if fila['rol'] == 'docente' else fila['estudiante_id']
         return fila['rol'], persona_id
+
+    # Aspirantes inscritos desde la página pública
+    aspirante = get_db().execute(
+        'SELECT id, contrasena_hash, estado FROM aspirantes WHERE correo = ?', (correo,)).fetchone()
+    if aspirante and check_password_hash(aspirante['contrasena_hash'], contrasena):
+        return 'aspirante', aspirante['id']
     return None, None
 
 
@@ -49,7 +55,7 @@ def login():
             session['rol'] = rol
             session['persona_id'] = persona_id
             return redirect(destino_por_rol(rol))
-        flash('Correo o contraseña incorrectos.')
+        flash('Correo o contraseña incorrectos.', 'error')
         return redirect(url_for('autenticar.login'))
     return render_template('auth/login.html')
 
