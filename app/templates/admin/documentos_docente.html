@@ -1,0 +1,49 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block title %}Documentos de {{ docente.nombres }}{% endblock %}
+
+{% block content %}
+
+<p><a href="{{ url_for('admin.entidad', entidad='docentes') }}">← Volver a docentes</a></p>
+<h1>Documentos de {{ docente.nombres }} {{ docente.apellidos }}</h1>
+<p>Documento {{ docente.documento }} · {{ docente.correo or 'sin correo' }}</p>
+
+<section class="bloque-admin">
+    <h2>Documentos cargados por el docente</h2>
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Documento</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Archivo</th>
+                    <th scope="col">Fecha</th>
+                    <th scope="col" class="col-acciones">Ver</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in documentos %}
+                <tr>
+                    <td><strong>{{ doc.etiqueta }}</strong></td>
+                    <td>
+                        {% if doc.archivo %}
+                        <span class="nota-resumen" style="background:var(--ok-bg); color:var(--ok);"><i class="fa-solid fa-circle-check"></i> Subido</span>
+                        {% else %}
+                        <span class="nota-resumen">Pendiente</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ doc.archivo.nombre_original if doc.archivo else '—' }}</td>
+                    <td>{{ doc.archivo.subido_en if doc.archivo else '—' }}</td>
+                    <td class="col-acciones">
+                        {% if doc.archivo %}
+                        <a href="{{ url_for('admin.descargar_documento_docente', docente_id=docente.id, clave=doc.clave) }}" class="boton-admin" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-download"></i> Descargar</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{% endblock %}

@@ -19,6 +19,7 @@ from blueprints.api import api_bp
 from blueprints.admin import admin_bp
 from blueprints.docente import docente_bp
 from blueprints.aspirante import aspirante_bp
+from blueprints.datos_docente import datos_docente_bp
 from nucleo.db import init_app as iniciar_base_de_datos
 
 
@@ -30,6 +31,7 @@ app.register_blueprint(api_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(docente_bp)
 app.register_blueprint(aspirante_bp)
+app.register_blueprint(datos_docente_bp)
 
 # Crea las tablas de la base de datos si todavía no existen
 iniciar_base_de_datos(app)
