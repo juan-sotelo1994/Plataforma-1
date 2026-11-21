@@ -29,10 +29,11 @@ def _autenticar(correo, contrasena):
         return 'admin', None
 
     fila = get_db().execute(
-        'SELECT rol, docente_id, estudiante_id, contrasena_hash FROM usuarios WHERE correo = ?',
+        'SELECT rol, docente_id, estudiante_id, personal_id, contrasena_hash FROM usuarios WHERE correo = ?',
         (correo,)).fetchone()
     if fila and check_password_hash(fila['contrasena_hash'], contrasena):
-        persona_id = fila['docente_id'] if fila['rol'] == 'docente' else fila['estudiante_id']
+        persona_id = {'docente': fila['docente_id'], 'estudiante': fila['estudiante_id']}.get(
+            fila['rol'], fila['personal_id'])
         return fila['rol'], persona_id
 
     # Aspirantes inscritos desde la página pública

@@ -57,8 +57,10 @@
 <section class="bloque-admin">
     <h2 style="display:flex; align-items:center; gap:12px;">
         Registros <span class="contador">({{ filas|length }})</span>
+        <input type="search" id="buscar-registros" placeholder="Buscar en la lista…" autocomplete="off"
+               style="margin-left:auto; width:260px; height:36px; padding:0 12px; border:1px solid #cbd5e1; border-radius:8px; font:inherit; font-size:14px; font-weight:400;">
         {% if not config.solo_lectura %}
-        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-crear" style="margin-left:auto;">
+        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-crear">
             <i class="fa-solid fa-plus"></i> Nuevo {{ config.singular }}
         </button>
         {% endif %}
@@ -75,7 +77,7 @@
             </thead>
             <tbody>
                 {% for fila in filas %}
-                <tr>
+                <tr class="fila-registro">
                     {% for _, clave in config.columnas %}<td>{{ fila[clave] if fila[clave] not in (None, '') else '—' }}</td>{% endfor %}
                     <td class="col-acciones">
                         {% if not config.solo_lectura %}
@@ -173,4 +175,20 @@
 
 {% endif %}
 
+<script>
+    // Buscador de la lista: oculta las filas que no contienen el texto (sin distinguir tildes)
+    (function () {
+        var buscar = document.getElementById('buscar-registros');
+        if (!buscar) return;
+        function normal(texto) {
+            return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+        }
+        buscar.addEventListener('input', function () {
+            var texto = normal(buscar.value.trim());
+            document.querySelectorAll('tr.fila-registro').forEach(function (fila) {
+                fila.style.display = normal(fila.textContent).indexOf(texto) !== -1 ? '' : 'none';
+            });
+        });
+    })();
+</script>
 {% endblock %}

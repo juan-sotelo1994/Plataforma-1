@@ -43,11 +43,12 @@
                     </ul>
                 </section>
 
-                <details class="grupo desplegable" {% if entidad in ['docentes', 'estudiantes'] or request.endpoint == 'admin.accesos' %}open{% endif %}>
+                <details class="grupo desplegable" {% if entidad in ['docentes', 'estudiantes', 'personal'] or request.endpoint == 'admin.accesos' %}open{% endif %}>
                     <summary class="grupo-titulo"><i class="fa-solid fa-users"></i>Usuarios</summary>
                     <ul>
                         <li><a href="{{ url_for('admin.entidad', entidad='docentes') }}"><i class="fa-solid fa-chalkboard-user"></i>Docentes</a></li>
                         <li><a href="{{ url_for('admin.entidad', entidad='estudiantes') }}"><i class="fa-solid fa-user-graduate"></i>Estudiantes</a></li>
+                        <li><a href="{{ url_for('admin.entidad', entidad='personal') }}"><i class="fa-solid fa-user-tie"></i>Personal</a></li>
                         <li><a href="{{ url_for('admin.accesos') }}"><i class="fa-solid fa-user-lock"></i>Crear acceso</a></li>
                     </ul>
                 </details>

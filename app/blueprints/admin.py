@@ -32,6 +32,26 @@ ENTIDADES = {
             {'nombre': 'horario', 'etiqueta': 'Horario', 'ejemplo': '6:00 a. m. – 12:00 m.'},
         ],
     },
+    'personal': {
+        'titulo': 'Personal',
+        'singular': 'persona del personal',
+        'tabla': 'personal',
+        'consulta': ("SELECT id, nombres, apellidos, documento, correo, "
+                     "CASE tipo WHEN 'administrativo' THEN 'Administrativo' ELSE 'Auxiliar' END AS cargo "
+                     "FROM personal ORDER BY apellidos, nombres"),
+        'columnas': [('Nombres', 'nombres'), ('Apellidos', 'apellidos'), ('Documento', 'documento'),
+                     ('Correo', 'correo'), ('Cargo', 'cargo')],
+        'campos': [
+            {'nombre': 'nombres', 'etiqueta': 'Nombres', 'requerido': True},
+            {'nombre': 'apellidos', 'etiqueta': 'Apellidos', 'requerido': True},
+            {'nombre': 'documento', 'etiqueta': 'Documento', 'requerido': True},
+            {'nombre': 'correo', 'etiqueta': 'Correo', 'tipo': 'email'},
+            {'nombre': 'tipo', 'etiqueta': 'Cargo', 'tipo': 'select', 'requerido': True,
+             'opciones_sql': ("SELECT 'administrativo' AS id, 'Administrativo' AS texto "
+                              "UNION ALL SELECT 'auxiliar', 'Auxiliar'"),
+             'ayuda': 'Después cree su acceso desde la sección Crear acceso.'},
+        ],
+    },
     'docentes': {
         'titulo': 'Docentes',
         'singular': 'docente',
@@ -215,9 +235,12 @@ ENTIDADES = {
 }
 
 # Tipos de persona que pueden tener una cuenta: (tabla, etiqueta)
+# Cada tipo: (tabla, etiqueta, columna que lo identifica en usuarios, filtro sobre la tabla)
 ROLES_CUENTA = {
-    'docente': ('docentes', 'Docente'),
-    'estudiante': ('estudiantes', 'Estudiante'),
+    'docente': ('docentes', 'Docente', 'docente_id', ''),
+    'estudiante': ('estudiantes', 'Estudiante', 'estudiante_id', ''),
+    'administrativo': ('personal', 'Administrativo', 'personal_id', "WHERE tipo = 'administrativo'"),
+    'auxiliar': ('personal', 'Auxiliar', 'personal_id', "WHERE tipo = 'auxiliar'"),
 }
 
 
@@ -839,7 +862,7 @@ def accesos():
         elif len(contrasena) < 6:
             flash('La contraseña debe tener al menos 6 caracteres.', 'error')
         else:
-            columna = 'docente_id' if rol == 'docente' else 'estudiante_id'
+            columna = ROLES_CUENTA[rol][2]
             try:
                 db.execute(
                     f'INSERT INTO usuarios (correo, contrasena_hash, rol, {columna}) VALUES (?, ?, ?, ?)',
@@ -852,21 +875,41 @@ def accesos():
 
     cuentas = db.execute(
         "SELECT u.id, u.correo, u.rol, "
-        "COALESCE(d.nombres || ' ' || d.apellidos, e.nombres || ' ' || e.apellidos) AS persona "
+        "COALESCE(d.nombres || ' ' || d.apellidos, e.nombres || ' ' || e.apellidos, "
+        "p.nombres || ' ' || p.apellidos) AS persona "
         "FROM usuarios u "
         "LEFT JOIN docentes d ON d.id = u.docente_id "
         "LEFT JOIN estudiantes e ON e.id = u.estudiante_id "
+        "LEFT JOIN personal p ON p.id = u.personal_id "
         "ORDER BY u.rol, persona").fetchall()
 
     personas = []
-    for rol, (tabla, etiqueta) in ROLES_CUENTA.items():
+    for rol, (tabla, etiqueta, _, filtro) in ROLES_CUENTA.items():
         filas = db.execute(
-            f"SELECT id, nombres || ' ' || apellidos AS nombre FROM {tabla} ORDER BY apellidos, nombres"
+            f"SELECT id, nombres || ' ' || apellidos AS nombre FROM {tabla} {filtro} ORDER BY apellidos, nombres"
         ).fetchall()
         personas += [(f'{rol}:{fila["id"]}', f'{etiqueta} · {fila["nombre"]}') for fila in filas]
 
     return render_template('admin/accesos.html', cuentas=cuentas, personas=personas,
                            entidades=ENTIDADES)
+
+
+@admin_bp.route('/accesos/<int:cuenta_id>/contrasena', methods=['POST'])
+@requiere_admin
+def restablecer_contrasena(cuenta_id):
+    db = get_db()
+    nueva = request.form.get('contrasena', '')
+    if len(nueva) < 6:
+        flash('La contraseña debe tener al menos 6 caracteres.', 'error')
+        return redirect(url_for('admin.accesos'))
+    cuenta = db.execute('SELECT correo FROM usuarios WHERE id = ?', (cuenta_id,)).fetchone()
+    if cuenta is None:
+        abort(404)
+    db.execute('UPDATE usuarios SET contrasena_hash = ? WHERE id = ?',
+               (generate_password_hash(nueva), cuenta_id))
+    db.commit()
+    flash(f'Contraseña restablecida para {cuenta["correo"]}.', 'ok')
+    return redirect(url_for('admin.accesos'))
 
 
 @admin_bp.route('/accesos/<int:cuenta_id>/eliminar', methods=['POST'])

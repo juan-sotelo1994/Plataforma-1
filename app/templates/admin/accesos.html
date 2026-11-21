@@ -32,9 +32,12 @@
                 {% for cuenta in cuentas %}
                 <tr>
                     <td>{{ cuenta.persona }}</td>
-                    <td>{{ 'Docente' if cuenta.rol == 'docente' else 'Estudiante' }}</td>
+                    <td>{{ cuenta.rol|capitalize }}</td>
                     <td>{{ cuenta.correo }}</td>
                     <td class="col-acciones">
+                        <button type="button" class="boton-admin" data-abrir="ventana-clave-{{ cuenta.id }}" style="margin-right:4px;">
+                            <i class="fa-solid fa-key"></i> Restablecer contraseña
+                        </button>
                         <form method="post" action="{{ url_for('admin.eliminar_acceso', cuenta_id=cuenta.id) }}"
                               data-confirmar="Se eliminará el acceso de {{ cuenta.persona }}. Esta acción no se puede deshacer."
                               data-confirmar-titulo="¿Eliminar este acceso?"
@@ -49,6 +52,35 @@
             </tbody>
         </table>
     </div>
+
+    {% for cuenta in cuentas %}
+    <!-- Ventana para restablecer la contraseña de esta cuenta -->
+    <dialog id="ventana-clave-{{ cuenta.id }}" class="dialog" aria-labelledby="titulo-clave-{{ cuenta.id }}">
+        <form method="post" action="{{ url_for('admin.restablecer_contrasena', cuenta_id=cuenta.id) }}"
+              data-confirmar="La contraseña anterior dejará de funcionar. Entregue la nueva a la persona."
+              data-confirmar-titulo="¿Restablecer la contraseña?"
+              data-confirmar-icono="warning"
+              data-confirmar-boton="Sí, restablecer"
+              data-confirmar-color="#1e3a8a">
+            <div class="dialog-head">
+                <h2 id="titulo-clave-{{ cuenta.id }}"><i class="fa-solid fa-key"></i>Restablecer contraseña</h2>
+                <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="dialog-body">
+                <p class="ayuda" style="margin:0 0 12px;">{{ cuenta.persona }} · {{ cuenta.correo }}</p>
+                <label class="form-field completo">
+                    <span>Nueva contraseña</span>
+                    <input type="password" name="contrasena" minlength="6" required autocomplete="new-password">
+                    <small class="ayuda">Mínimo 6 caracteres.</small>
+                </label>
+            </div>
+            <div class="dialog-foot">
+                <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
+                <button type="submit" class="boton-admin boton-admin-primario">Restablecer</button>
+            </div>
+        </form>
+    </dialog>
+    {% endfor %}
     {% else %}
     <p class="vacio">Todavía no hay cuentas creadas.{% if not personas %} Primero registre docentes o estudiantes.{% endif %}</p>
     {% endif %}

@@ -5,7 +5,6 @@ from werkzeug.security import generate_password_hash
 
 from servicios.circulares_data import por_sede
 from nucleo.db import get_db
-from servicios.documentos import guardar_documento
 
 
 web_bp = Blueprint('web', __name__)
@@ -47,7 +46,6 @@ EMPRESA = {
 }
 
 # Requisito que se sube al momento de inscribirse
-REQUISITO_IDENTIDAD = 'Documento de identidad del aspirante'
 
 
 @web_bp.app_context_processor
@@ -76,15 +74,12 @@ def inscripcion():
     datos['correo'] = datos['correo'].lower()
     contrasena = request.form.get('contrasena', '')
     confirmacion = request.form.get('confirmacion', '')
-    archivo = request.files.get('documento_identidad')
 
     obligatorios = {'nombres': 'Nombres', 'apellidos': 'Apellidos', 'documento': 'Número de documento',
                     'correo': 'Correo'}
     faltan = [etiqueta for campo, etiqueta in obligatorios.items() if not datos[campo]]
     if faltan:
         flash('Complete los campos obligatorios: ' + ', '.join(faltan) + '.', 'error')
-    elif archivo is None or not archivo.filename:
-        flash('Cargue el escaneado de su documento de identidad.', 'error')
     elif '@' not in datos['correo']:
         flash('Escriba un correo válido.', 'error')
     elif len(contrasena) < 6:
@@ -105,17 +100,8 @@ def inscripcion():
         except sqlite3.IntegrityError:
             flash('Ya existe una inscripción con ese documento o correo.', 'error')
         else:
-            requisito = db.execute('SELECT id FROM requisitos WHERE nombre = ?', (REQUISITO_IDENTIDAD,)).fetchone()
-            ok, mensaje = (guardar_documento(aspirante_id, requisito['id'], archivo)
-                           if requisito else (False, 'El requisito de documento de identidad no está configurado.'))
-            if not ok:
-                # Si el documento no sirve, no se crea la inscripción a medias
-                db.execute('DELETE FROM aspirantes WHERE id = ?', (aspirante_id,))
-                db.commit()
-                flash(f'La inscripción no se guardó: {mensaje}', 'error')
-            else:
-                flash('Inscripción recibida. Inicie sesión con su correo y contraseña para completar sus documentos.', 'ok')
-                return redirect(url_for('autenticar.login'))
+            flash('Inscripción recibida. Inicie sesión con su correo y contraseña para completar sus documentos.', 'ok')
+            return redirect(url_for('autenticar.login'))
 
     return render_template('web/inscripcion.html', datos=datos)
 

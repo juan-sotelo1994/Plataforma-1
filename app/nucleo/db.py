@@ -102,14 +102,25 @@ CREATE TABLE IF NOT EXISTS notas_criterio (
     PRIMARY KEY (criterio_id, estudiante_id)
 );
 
--- Cuentas de docentes y estudiantes (el administrador vive en el .env)
+-- Personal administrativo y auxiliares (no son docentes ni estudiantes)
+CREATE TABLE IF NOT EXISTS personal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombres TEXT NOT NULL,
+    apellidos TEXT NOT NULL,
+    documento TEXT NOT NULL UNIQUE,
+    correo TEXT,
+    tipo TEXT NOT NULL CHECK (tipo IN ('administrativo', 'auxiliar'))
+);
+
+-- Cuentas de ingreso (el administrador vive en el .env)
 CREATE TABLE IF NOT EXISTS usuarios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     correo TEXT NOT NULL UNIQUE,
     contrasena_hash TEXT NOT NULL,
-    rol TEXT NOT NULL CHECK (rol IN ('docente', 'estudiante')),
+    rol TEXT NOT NULL CHECK (rol IN ('docente', 'estudiante', 'administrativo', 'auxiliar')),
     docente_id INTEGER REFERENCES docentes(id) ON DELETE CASCADE,
-    estudiante_id INTEGER REFERENCES estudiantes(id) ON DELETE CASCADE
+    estudiante_id INTEGER REFERENCES estudiantes(id) ON DELETE CASCADE,
+    personal_id INTEGER REFERENCES personal(id) ON DELETE CASCADE
 );
 
 -- Inscripción de un estudiante en un curso
@@ -331,6 +342,35 @@ def _migrar(conexion):
     _permitir_curso_sin_docente(conexion)
     _crear_grupos_curso(conexion)
     _sembrar_materias_grados(conexion)
+    _ampliar_roles_usuarios(conexion)
+
+
+def _ampliar_roles_usuarios(conexion):
+    """Una sola vez por base: permite las cuentas de administrativos y auxiliares.
+
+    SQLite no permite cambiar un CHECK con ALTER, así que la tabla se reconstruye.
+    """
+    columnas = {fila['name'] for fila in conexion.execute('PRAGMA table_info(usuarios)')}
+    if 'personal_id' in columnas:
+        return
+    conexion.commit()
+    conexion.execute('PRAGMA foreign_keys = OFF')
+    conexion.execute('''
+        CREATE TABLE usuarios_nuevo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            correo TEXT NOT NULL UNIQUE,
+            contrasena_hash TEXT NOT NULL,
+            rol TEXT NOT NULL CHECK (rol IN ('docente', 'estudiante', 'administrativo', 'auxiliar')),
+            docente_id INTEGER REFERENCES docentes(id) ON DELETE CASCADE,
+            estudiante_id INTEGER REFERENCES estudiantes(id) ON DELETE CASCADE,
+            personal_id INTEGER REFERENCES personal(id) ON DELETE CASCADE
+        )''')
+    conexion.execute('INSERT INTO usuarios_nuevo (id, correo, contrasena_hash, rol, docente_id, estudiante_id) '
+                     'SELECT id, correo, contrasena_hash, rol, docente_id, estudiante_id FROM usuarios')
+    conexion.execute('DROP TABLE usuarios')
+    conexion.execute('ALTER TABLE usuarios_nuevo RENAME TO usuarios')
+    conexion.execute('PRAGMA foreign_keys = ON')
+    conexion.commit()
 
 
 def _crear_grupos_curso(conexion):
