@@ -574,7 +574,7 @@ def curso_grupo(grupo_id):
         "LEFT JOIN docentes d ON d.id = c.docente_id "
         "WHERE c.grupo_id = ? ORDER BY m.nombre", (grupo_id,)).fetchall()
     estudiantes = db.execute(
-        "SELECT DISTINCT e.id, e.codigo, e.documento, e.apellidos || ' ' || e.nombres AS nombre "
+        "SELECT DISTINCT e.id, e.codigo, e.documento, e.apellidos, e.nombres, e.apellidos || ' ' || e.nombres AS nombre "
         "FROM matriculas mt JOIN cursos c ON c.id = mt.curso_id "
         "JOIN estudiantes e ON e.id = mt.estudiante_id "
         "WHERE c.grupo_id = ? ORDER BY e.apellidos, e.nombres", (grupo_id,)).fetchall()

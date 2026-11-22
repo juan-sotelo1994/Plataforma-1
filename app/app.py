@@ -22,6 +22,8 @@ from blueprints.aspirante import aspirante_bp
 from blueprints.datos_docente import datos_docente_bp
 from blueprints.personal import personal_bp
 from blueprints.superadmin import superadmin_bp
+from blueprints.finanzas import finanzas_bp
+from blueprints.finanzas_admin import finanzas_admin_bp
 from nucleo.db import init_app as iniciar_base_de_datos
 
 
@@ -36,6 +38,8 @@ app.register_blueprint(aspirante_bp)
 app.register_blueprint(datos_docente_bp)
 app.register_blueprint(personal_bp)
 app.register_blueprint(superadmin_bp)
+app.register_blueprint(finanzas_bp)
+app.register_blueprint(finanzas_admin_bp)
 
 # Crea las tablas de la base de datos si todavía no existen
 iniciar_base_de_datos(app)

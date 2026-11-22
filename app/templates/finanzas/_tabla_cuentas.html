@@ -1,0 +1,32 @@
+{% if cuentas %}
+<div class="tabla-contenedor">
+    <table class="tabla-admin">
+        <thead>
+            <tr>
+                <th scope="col">Tipo</th><th scope="col">Cuenta</th><th scope="col">Movimientos</th>
+                <th scope="col">Total</th><th scope="col">Estado</th><th scope="col" class="col-acciones">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cuenta in cuentas %}
+            <tr>
+                <td>{{ 'Ingreso' if cuenta.tipo == 'ingreso' else 'Egreso' }}</td>
+                <td>{{ cuenta.nombre }}</td>
+                <td>{{ cuenta.movimientos }}</td>
+                <td>{{ cuenta.total|pesos(2) }}</td>
+                <td>{{ 'Activa' if cuenta.activa else 'Desactivada' }}</td>
+                <td class="col-acciones">
+                    <form method="post" action="{{ url_for('finanzas.cambiar_estado_cuenta', sede_id=sede.id, cuenta_id=cuenta.id) }}" style="display:inline;">
+                        <button type="submit" class="boton-admin" style="height:30px; font-size:13px;">
+                            {{ 'Desactivar' if cuenta.activa else 'Activar' }}
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="vacio">Todavía no hay cuentas en esta sede.</p>
+{% endif %}

@@ -27,6 +27,7 @@
                     <ul>
                         <li><a href="{{ url_for('superadmin.inicio') }}"><i class="fa-solid fa-building"></i>Sedes y administradores</a></li>
                         <li><a href="{{ url_for('superadmin.monitoreo') }}"><i class="fa-solid fa-chart-line"></i>Monitoreo general</a></li>
+                        <li><a href="{{ url_for('superadmin.finanzas_monitoreo') }}"><i class="fa-solid fa-coins"></i>Finanzas</a></li>
                     </ul>
                 </section>
             </nav>
@@ -93,10 +94,10 @@
                         <input type="search" name="q" value="{{ q }}" placeholder="Buscar por usuario, acción o detalle" style="max-width:360px;">
                         <button type="submit" class="boton-admin">Buscar</button>
                     </form>
-                    <p class="ayuda" style="margin:0 0 10px;">Últimos 500 movimientos de esta sede, del más reciente al más antiguo.</p>
+                    <p class="ayuda" style="margin:14px 18px 10px;">Últimos 500 movimientos de esta sede, del más reciente al más antiguo.</p>
                     {% endif %}
                     {% if seccion == 'avances' %}
-                    <p class="ayuda" style="margin:0 0 10px;">Avance = estudiantes con nota final ÷ estudiantes matriculados en cada materia.</p>
+                    <p class="ayuda" style="margin:14px 18px 10px;">Avance = estudiantes con nota final ÷ estudiantes matriculados en cada materia.</p>
                     {% endif %}
                     {% if filas %}
                     <div class="tabla-contenedor">

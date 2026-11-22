@@ -1,0 +1,143 @@
+                <nav style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+                    {% for clave, etiqueta in secciones.items() %}
+                    <a href="{{ url_for(endpoint_sede, sede_id=sede.id, seccion=clave) }}"
+                       class="boton-admin {% if seccion == clave %}boton-admin-primario{% endif %}">{{ etiqueta }}</a>
+                    {% endfor %}
+                </nav>
+
+                {% if seccion == 'resumen' %}
+                <section class="bloque-admin">
+                    <h2>Resumen</h2>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:12px; margin-bottom:18px;">
+                        <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+                            <div class="contador">Ingresos</div>
+                            <div style="font-size:22px; font-weight:700;">{{ resumen.ingresos|pesos(2) }}</div>
+                        </div>
+                        <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+                            <div class="contador">Egresos</div>
+                            <div style="font-size:22px; font-weight:700;">{{ resumen.egresos|pesos(2) }}</div>
+                        </div>
+                        <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+                            <div class="contador">Saldo</div>
+                            <div style="font-size:22px; font-weight:700;">{{ resumen.saldo|pesos(2) }}</div>
+                        </div>
+                        <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+                            <div class="contador">Recibos de matrícula pendientes</div>
+                            <div style="font-size:22px; font-weight:700;">{{ matricula_conteos.pendiente }}</div>
+                        </div>
+                    </div>
+                    <h3 style="margin:0 0 8px;">Cuentas</h3>
+                    {% if cuentas %}
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead><tr><th scope="col">Tipo</th><th scope="col">Cuenta</th><th scope="col">Movimientos</th><th scope="col">Total</th><th scope="col">Estado</th></tr></thead>
+                            <tbody>
+                                {% for cuenta in cuentas %}
+                                <tr>
+                                    <td>{{ 'Ingreso' if cuenta.tipo == 'ingreso' else 'Egreso' }}</td>
+                                    <td>{{ cuenta.nombre }}</td>
+                                    <td>{{ cuenta.movimientos }}</td>
+                                    <td>{{ cuenta.total|pesos(2) }}</td>
+                                    <td>{{ 'Activa' if cuenta.activa else 'Desactivada' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                </section>
+
+                {% elif seccion in ['ingresos', 'egresos'] %}
+                <section class="bloque-admin">
+                    <h2>{{ secciones[seccion] }} <span class="contador">({{ movimientos|length }})</span></h2>
+                    <p class="ayuda" style="margin:14px 18px 10px;">Los movimientos anulados aparecen marcados y no suman en los saldos.</p>
+                    {% if movimientos %}
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead><tr><th scope="col">Fecha</th><th scope="col">Cuenta</th><th scope="col">Concepto</th>
+                                <th scope="col">Referencia</th><th scope="col">Monto</th><th scope="col">Registró</th><th scope="col">Estado</th></tr></thead>
+                            <tbody>
+                                {% for m in movimientos %}
+                                <tr style="{% if m.anulado %}opacity:.55;{% endif %}">
+                                    <td>{{ m.fecha }}</td><td>{{ m.cuenta }}</td><td>{{ m.concepto }}</td>
+                                    <td>{{ m.referencia or '—' }}</td><td>{{ m.monto|pesos(2) }}</td><td>{{ m.registrado_por }}</td>
+                                    <td>{% if m.anulado %}Anulado por {{ m.anulado_por }}: {{ m.motivo_anulacion }}{% else %}Vigente{% endif %}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="vacio">No hay {{ 'ingresos' if seccion == 'ingresos' else 'egresos' }} registrados en esta sede.</p>
+                    {% endif %}
+                </section>
+
+                {% elif seccion == 'gastos' %}
+                <section class="bloque-admin">
+                    <h2>Gastos operacionales por cuenta</h2>
+                    <p class="ayuda" style="margin:14px 18px 10px;">Total de egresos de cada cuenta de gasto, sin los anulados.</p>
+                    {% if gastos %}
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead><tr><th scope="col">Cuenta de gasto</th><th scope="col">Movimientos</th><th scope="col">Total</th></tr></thead>
+                            <tbody>
+                                {% for g in gastos %}
+                                <tr><td>{{ g.nombre }}</td><td>{{ g.movimientos }}</td><td>{{ g.total|pesos(2) }}</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="vacio">No hay cuentas de gasto en esta sede.</p>
+                    {% endif %}
+                </section>
+
+                {% elif seccion == 'bajas' %}
+                <section class="bloque-admin">
+                    <h2>Bajas de inventario <span class="contador">({{ bajas|length }})</span></h2>
+                    {% if bajas %}
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead><tr><th scope="col">Fecha</th><th scope="col">Código</th><th scope="col">Artículo</th>
+                                <th scope="col">Cantidad</th><th scope="col">Costo</th><th scope="col">Motivo</th><th scope="col">Registró</th></tr></thead>
+                            <tbody>
+                                {% for b in bajas %}
+                                <tr>
+                                    <td>{{ b.fecha }}</td><td>{{ b.codigo }}</td><td>{{ b.nombre }}</td>
+                                    <td>{{ '%g'|format(b.cantidad|float) }}</td><td>{{ b.costo_total|pesos(2) }}</td>
+                                    <td>{{ b.motivo }}</td><td>{{ b.registrado_por }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="vacio">No hay bajas registradas en esta sede.</p>
+                    {% endif %}
+                </section>
+
+                {% elif seccion == 'matricula' %}
+                <section class="bloque-admin">
+                    <h2>Matrícula financiera <span class="contador">({{ recibos|length }})</span></h2>
+                    <p class="ayuda" style="margin:14px 18px 10px;">Pendientes: {{ matricula_conteos.pendiente }} · Aprobados: {{ matricula_conteos.aprobado }} · Rechazados: {{ matricula_conteos.rechazado }}</p>
+                    {% if recibos %}
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead><tr><th scope="col">Código</th><th scope="col">Estudiante</th><th scope="col">Modalidad</th>
+                                <th scope="col">Periodo</th><th scope="col">Fecha de pago</th><th scope="col">Estado</th><th scope="col">Observación</th></tr></thead>
+                            <tbody>
+                                {% for r in recibos %}
+                                <tr>
+                                    <td>{{ r.codigo }}</td><td>{{ r.estudiante }}</td><td>{{ r.modalidad }}</td>
+                                    <td>{{ r.periodo }}</td><td>{{ r.fecha_pago }}</td><td>{{ r.estado|capitalize }}</td>
+                                    <td>{{ r.observacion or '—' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="vacio">Todavía no hay recibos de matrícula en esta sede.</p>
+                    {% endif %}
+                </section>
+                {% endif %}

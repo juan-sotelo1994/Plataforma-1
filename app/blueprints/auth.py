@@ -5,7 +5,9 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from nucleo.auditoria import registrar
-from nucleo.sedes import conectar_central, conectar_sede, listar_sedes
+from nucleo.sedes import (buscar_administradora_financiera, buscar_financiero, cambiar_contrasena_administradora,
+                          cambiar_contrasena_financiero, conectar_central, conectar_sede, listar_sedes,
+                          registrar_acceso_financiero)
 from nucleo.seguridad import INICIO_POR_ROL, destino_por_rol, requiere_rol
 
 
@@ -69,6 +71,18 @@ def _autenticar(correo, contrasena):
     if admin and check_password_hash(admin['contrasena_hash'], contrasena):
         return 'admin', None, (admin['archivo'], admin['nombre'])
 
+    # La administradora financiera ve todas las sedes (solo lectura); no entra a una sede en particular
+    administradora = buscar_administradora_financiera(correo)
+    if administradora and not administradora['bloqueado'] and check_password_hash(administradora['contrasena_hash'], contrasena):
+        return 'administradora_financiera', administradora['id'], None
+
+    # El perfil financiero trabaja en la sede que el superadministrador le asignó
+    financiero = buscar_financiero(correo)
+    if financiero and not financiero['bloqueado'] and check_password_hash(financiero['contrasena_hash'], contrasena):
+        if financiero['sede_archivo'] is None:
+            return None, None, None
+        return 'financiero', financiero['id'], (financiero['sede_archivo'], financiero['sede_nombre'])
+
     # El correo identifica la sede: se busca en cada base hasta encontrarlo
     for sede in listar_sedes():
         rol, persona_id = _autenticar_en_sede(sede['archivo'], correo, contrasena)
@@ -100,7 +114,13 @@ def login():
             if sede:
                 session['sede_archivo'], session['sede_nombre'] = sede
                 _registrar_ingreso(sede[0], correo)
+            if rol == 'administradora_financiera':
+                registrar_acceso_financiero(correo, 'ingreso_administradora', 'Inició sesión en finanzas globales')
             return redirect(destino_por_rol(rol))
+        bloqueado = buscar_financiero(correo)
+        if bloqueado and bloqueado['bloqueado'] and check_password_hash(bloqueado['contrasena_hash'], contrasena):
+            flash('Esta cuenta está bloqueada. Consulte al superadministrador.', 'error')
+            return redirect(url_for('autenticar.login'))
         flash('Correo o contraseña incorrectos.', 'error')
         return redirect(url_for('autenticar.login'))
     return render_template('auth/login.html')
@@ -125,10 +145,12 @@ def recuperar_codigo():
 
 
 # Cuentas con contraseña propia: el superadministrador, los administradores de sede y las personas de cada sede
-ROLES_CON_CONFIGURACION = ('superadmin', 'admin', 'docente', 'estudiante', 'aspirante', 'administrativo', 'auxiliar')
-ETIQUETAS_ROL = {'superadmin': 'Superadministrador', 'admin': 'Administrador de sede', 'docente': 'Docente',
-                 'estudiante': 'Estudiante', 'aspirante': 'Aspirante', 'administrativo': 'Administrativo',
-                 'auxiliar': 'Auxiliar'}
+ROLES_CON_CONFIGURACION = ('superadmin', 'admin', 'financiero', 'administradora_financiera', 'docente', 'estudiante',
+                           'aspirante', 'administrativo', 'auxiliar')
+ETIQUETAS_ROL = {'superadmin': 'Superadministrador', 'admin': 'Administrador de sede', 'financiero': 'Financiero',
+                 'administradora_financiera': 'Administradora financiera',
+                 'docente': 'Docente', 'estudiante': 'Estudiante', 'aspirante': 'Aspirante',
+                 'administrativo': 'Administrativo', 'auxiliar': 'Auxiliar'}
 
 
 def _hash_superadmin():
@@ -150,6 +172,12 @@ def _hash_vigente(rol, correo):
             fila = central.execute('SELECT contrasena_hash FROM admins_sede WHERE correo = ?', (correo,)).fetchone()
         finally:
             central.close()
+        return fila['contrasena_hash'] if fila else None
+    if rol == 'financiero':
+        fila = buscar_financiero(correo)
+        return fila['contrasena_hash'] if fila else None
+    if rol == 'administradora_financiera':
+        fila = buscar_administradora_financiera(correo)
         return fila['contrasena_hash'] if fila else None
     conexion = conectar_sede(session['sede_archivo'])
     try:
@@ -179,6 +207,10 @@ def _guardar_contrasena(rol, correo, hash_nuevo):
             central.commit()
         finally:
             central.close()
+    elif rol == 'financiero':
+        cambiar_contrasena_financiero(correo, hash_nuevo)
+    elif rol == 'administradora_financiera':
+        cambiar_contrasena_administradora(correo, hash_nuevo)
     else:
         # La misma contraseña queda en la cuenta de ingreso y en la ficha de aspirante, si la hay
         conexion = conectar_sede(session['sede_archivo'])

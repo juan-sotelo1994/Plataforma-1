@@ -1,0 +1,74 @@
+{% from '_alertas.html' import modal_errores, modal_avisos, confirmar_js %}
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finanzas · {{ sede.nombre }} | {{ empresa.nombre }}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/consola.css') }}">
+</head>
+
+<body>
+    <div class="panel" id="panel">
+        <aside class="sidebar" id="sidebar" aria-label="Menú del superadministrador">
+            <div class="sidebar-head">
+                <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="30" height="30">
+                <strong>{{ empresa.nombre }}</strong>
+            </div>
+            <nav class="sidebar-nav">
+                <section class="grupo">
+                    <h3 class="grupo-titulo"><i class="fa-solid fa-building"></i>Sedes</h3>
+                    <ul>
+                        <li><a href="{{ url_for('superadmin.inicio') }}"><i class="fa-solid fa-building"></i>Sedes y administradores</a></li>
+                        <li><a href="{{ url_for('superadmin.monitoreo') }}"><i class="fa-solid fa-chart-line"></i>Monitoreo general</a></li>
+                        <li><a href="{{ url_for('superadmin.finanzas_monitoreo') }}"><i class="fa-solid fa-coins"></i>Finanzas</a></li>
+                    </ul>
+                </section>
+            </nav>
+            <div class="sidebar-foot">
+                <strong>SUPERADMIN</strong>
+                <span>v1.0</span>
+            </div>
+        </aside>
+
+        <div class="main">
+            <header class="topbar">
+                <span class="topbar-title">Finanzas · {{ sede.nombre }}</span>
+                <div class="topbar-usuario">
+                    <span class="correo">{{ session.usuario }}</span>
+                    <a href="{{ url_for('autenticar.configuracion') }}">CONFIGURACIÓN</a>
+                    <a href="{{ url_for('autenticar.logout') }}">CERRAR SESIÓN</a>
+                </div>
+            </header>
+
+            <main class="content">
+                {% with mensajes = get_flashed_messages(with_categories=true) %}
+                {{ modal_errores(mensajes) }}
+                {{ modal_avisos(mensajes) }}
+                {% endwith %}
+
+                <p><a href="{{ url_for('superadmin.finanzas_monitoreo') }}">← Volver a Finanzas</a></p>
+                <h1>Finanzas · {{ sede.nombre }}</h1>
+                <p class="ayuda" style="margin:0 0 14px;">Vista de solo lectura. Aquí se consultan las cuentas de la sede; no se registra ni se cambia nada.</p>
+
+                {% set endpoint_sede = 'superadmin.finanzas_sede' %}
+                {% include 'superadmin/_finanzas_sede_contenido.html' %}
+            </main>
+
+            <footer class="statusbar">
+                <span>{{ empresa.nombre }}</span>
+                <span>Sesión: {{ session.usuario }}</span>
+            </footer>
+        </div>
+    </div>
+    {{ confirmar_js() }}
+    <script src="{{ url_for('static', filename='js/panel.js') }}" defer></script>
+</body>
+
+</html>

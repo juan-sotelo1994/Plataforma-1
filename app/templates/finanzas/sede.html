@@ -1,0 +1,284 @@
+{% extends 'finanzas/base_finanzas.html' %}
+
+{% block title %}{{ sede.nombre }} · {{ secciones[seccion] }}{% endblock %}
+
+{% block content %}
+<h1>{{ sede.nombre }}</h1>
+<p class="ayuda" style="margin:0 0 14px;">Finanzas de esta sede. Todo lo que se registra aquí queda en la auditoría de la sede y el superadministrador lo puede ver.</p>
+
+<nav style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+    {% for clave, etiqueta in secciones.items() %}
+    <a href="{{ url_for('finanzas.sede', sede_id=sede.id, seccion=clave) }}"
+       class="boton-admin {% if seccion == clave %}boton-admin-primario{% endif %}">{{ etiqueta }}</a>
+    {% endfor %}
+</nav>
+
+{% if seccion == 'resumen' %}
+<section class="bloque-admin">
+    <h2>Resumen</h2>
+    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:12px; margin-bottom:18px;">
+        <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+            <div class="contador">Ingresos</div>
+            <div style="font-size:22px; font-weight:700;">{{ resumen.ingresos|pesos(2) }}</div>
+        </div>
+        <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+            <div class="contador">Egresos</div>
+            <div style="font-size:22px; font-weight:700;">{{ resumen.egresos|pesos(2) }}</div>
+        </div>
+        <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+            <div class="contador">Saldo</div>
+            <div style="font-size:22px; font-weight:700;">{{ resumen.saldo|pesos(2) }}</div>
+        </div>
+    </div>
+    <p class="ayuda" style="margin:14px 18px 10px;">Los movimientos anulados no suman en estas cifras.</p>
+    {% include 'finanzas/_tabla_cuentas.html' %}
+</section>
+
+{% elif seccion == 'movimientos' %}
+<section class="bloque-admin">
+    <h2>Registrar movimiento</h2>
+    {% if cuentas %}
+    <form method="post" action="{{ url_for('finanzas.crear_movimiento', sede_id=sede.id) }}"
+          style="display:grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap:10px; align-items:end; margin-bottom:18px;">
+        <label class="form-field"><span>Fecha</span>
+            <input type="date" name="fecha" value="{{ hoy }}" required></label>
+        <label class="form-field"><span>Tipo</span>
+            <select name="tipo" required>
+                <option value="ingreso">Ingreso</option>
+                <option value="egreso">Egreso</option>
+            </select></label>
+        <label class="form-field"><span>Cuenta</span>
+            <select name="cuenta_id" required>
+                {% for cuenta in cuentas %}
+                <option value="{{ cuenta.id }}">{{ 'Ingreso' if cuenta.tipo == 'ingreso' else 'Egreso' }} · {{ cuenta.nombre }}</option>
+                {% endfor %}
+            </select></label>
+        <label class="form-field"><span>Monto (pesos)</span>
+            <input type="number" name="monto" min="0.01" step="0.01" required></label>
+        <label class="form-field"><span>Concepto</span>
+            <input type="text" name="concepto" required placeholder="Ej.: Pensión de marzo, estudiante X"></label>
+        <label class="form-field"><span>Referencia (recibo o factura)</span>
+            <input type="text" name="referencia"></label>
+        <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-floppy-disk"></i> Registrar</button>
+    </form>
+    {% else %}
+    <p class="vacio">No hay cuentas activas. Cree una en la sección Cuentas.</p>
+    {% endif %}
+</section>
+
+<section class="bloque-admin">
+    <h2>Movimientos <span class="contador">({{ movimientos|length }})</span></h2>
+    <form method="get" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; align-items:flex-end;">
+        <input type="hidden" name="seccion" value="movimientos">
+        <label class="form-field"><span>Tipo</span>
+            <select name="tipo">
+                <option value="">Todos</option>
+                <option value="ingreso" {% if filtros.tipo == 'ingreso' %}selected{% endif %}>Ingresos</option>
+                <option value="egreso" {% if filtros.tipo == 'egreso' %}selected{% endif %}>Egresos</option>
+            </select></label>
+        <label class="form-field"><span>Cuenta</span>
+            <select name="cuenta">
+                <option value="">Todas</option>
+                {% for cuenta in cuentas %}
+                <option value="{{ cuenta.id }}" {% if filtros.cuenta == cuenta.id|string %}selected{% endif %}>{{ cuenta.nombre }}</option>
+                {% endfor %}
+            </select></label>
+        <label class="form-field"><span>Desde</span><input type="date" name="desde" value="{{ filtros.desde }}"></label>
+        <label class="form-field"><span>Hasta</span><input type="date" name="hasta" value="{{ filtros.hasta }}"></label>
+        <label class="form-field" style="flex-direction:row; align-items:center; gap:6px;">
+            <input type="checkbox" name="anulados" value="1" {% if filtros.anulados == '1' %}checked{% endif %}> <span>Mostrar anulados</span></label>
+        <button type="submit" class="boton-admin">Filtrar</button>
+    </form>
+    {% if movimientos %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Fecha</th><th scope="col">Tipo</th><th scope="col">Cuenta</th>
+                    <th scope="col">Concepto</th><th scope="col">Referencia</th><th scope="col">Monto</th>
+                    <th scope="col">Registró</th><th scope="col" class="col-acciones">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in movimientos %}
+                <tr style="{% if m.anulado %}opacity:.55;{% endif %}">
+                    <td>{{ m.fecha }}</td>
+                    <td>{{ 'Ingreso' if m.tipo == 'ingreso' else 'Egreso' }}</td>
+                    <td>{{ m.cuenta }}</td>
+                    <td>{{ m.concepto }}{% if m.anulado %}<br><small class="contador">Anulado por {{ m.anulado_por }}: {{ m.motivo_anulacion }}</small>{% endif %}</td>
+                    <td>{{ m.referencia or '—' }}</td>
+                    <td>{{ m.monto|pesos(2) }}</td>
+                    <td>{{ m.registrado_por }}</td>
+                    <td class="col-acciones">
+                        {% if not m.anulado %}
+                        <form method="post" action="{{ url_for('finanzas.anular_movimiento', sede_id=sede.id, movimiento_id=m.id) }}" style="display:flex; gap:6px; justify-content:flex-end;"
+                              data-confirmar="El movimiento quedará anulado y dejará de sumar en los saldos. Queda registrado en la auditoría."
+                              data-confirmar-titulo="¿Anular este movimiento?"
+                              data-confirmar-icono="warning"
+                              data-confirmar-boton="Sí, anular"
+                              data-confirmar-color="#cc3333">
+                            <input type="text" name="motivo" placeholder="Motivo" required style="width:150px; height:30px; padding:0 8px; border:1px solid #cbd5e1; border-radius:6px; font:inherit; font-size:13px;">
+                            <button type="submit" class="boton-admin boton-admin-peligro" style="height:30px; font-size:13px;">Anular</button>
+                        </form>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">No hay movimientos con estos filtros.</p>
+    {% endif %}
+</section>
+
+{% elif seccion == 'cuentas' %}
+<section class="bloque-admin">
+    <h2>Nueva cuenta</h2>
+    <form method="post" action="{{ url_for('finanzas.crear_cuenta', sede_id=sede.id) }}"
+          style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:14px;">
+        <label class="form-field"><span>Tipo</span>
+            <select name="tipo" required>
+                <option value="ingreso">Ingreso</option>
+                <option value="egreso">Egreso</option>
+            </select></label>
+        <label class="form-field" style="flex:1; min-width:220px;"><span>Nombre de la cuenta</span>
+            <input type="text" name="nombre" required placeholder="Ej.: Pensiones, Servicios públicos"></label>
+        <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-plus"></i> Crear cuenta</button>
+    </form>
+    <p class="ayuda" style="margin:14px 18px 10px;">Desactivar una cuenta impide registrar nuevos movimientos en ella, pero conserva su historial.</p>
+    {% include 'finanzas/_tabla_cuentas.html' %}
+</section>
+
+{% elif seccion == 'kardex' %}
+<section class="bloque-admin">
+    <h2>Artículos <span class="contador">({{ articulos|length }})</span></h2>
+    <form method="post" action="{{ url_for('finanzas.crear_articulo', sede_id=sede.id) }}"
+          style="display:grid; grid-template-columns: 1fr 2fr 1fr auto; gap:10px; align-items:flex-end; margin-bottom:14px;">
+        <label class="form-field"><span>Código</span><input type="text" name="codigo" required></label>
+        <label class="form-field"><span>Nombre</span><input type="text" name="nombre" required></label>
+        <label class="form-field"><span>Unidad</span><input type="text" name="unidad" placeholder="unidad, resma, caja"></label>
+        <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-plus"></i> Crear</button>
+    </form>
+    {% if articulos %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead><tr><th scope="col">Código</th><th scope="col">Artículo</th><th scope="col">Unidad</th>
+                <th scope="col">Existencia</th><th scope="col">Valor</th><th scope="col" class="col-acciones">Kárdex</th></tr></thead>
+            <tbody>
+                {% for a in articulos %}
+                <tr>
+                    <td>{{ a.codigo }}</td><td>{{ a.nombre }}</td><td>{{ a.unidad }}</td>
+                    <td>{{ '%g'|format(a.existencia|float) }}</td><td>{{ a.valor|pesos(2) }}</td>
+                    <td class="col-acciones"><a href="{{ url_for('finanzas.sede', sede_id=sede.id, seccion='kardex', articulo=a.id) }}" class="boton-admin" style="height:30px; padding:0 10px; font-size:13px;">Ver</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">Todavía no hay artículos. Cree el primero arriba.</p>
+    {% endif %}
+</section>
+
+{% if articulos %}
+<section class="bloque-admin">
+    <h2>Registrar entrada</h2>
+    <form method="post" action="{{ url_for('finanzas.registrar_entrada', sede_id=sede.id) }}"
+          style="display:grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap:10px; align-items:end;">
+        <label class="form-field"><span>Artículo</span>
+            <select name="articulo_id" required>
+                {% for a in articulos %}<option value="{{ a.id }}" {% if seleccionado == a.id %}selected{% endif %}>{{ a.codigo }} · {{ a.nombre }}</option>{% endfor %}
+            </select></label>
+        <label class="form-field"><span>Fecha</span><input type="date" name="fecha" value="{{ hoy }}" required></label>
+        <label class="form-field"><span>Cantidad</span><input type="number" name="cantidad" min="0.001" step="0.001" required></label>
+        <label class="form-field"><span>Costo unitario (pesos)</span><input type="number" name="costo_unitario" min="0" step="0.0001" required></label>
+        <label class="form-field"><span>Detalle (proveedor, factura)</span><input type="text" name="detalle"></label>
+        <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-arrow-down"></i> Registrar entrada</button>
+    </form>
+</section>
+{% endif %}
+
+{% if seleccionado is defined %}
+<section class="bloque-admin">
+    <h2>Kárdex del artículo</h2>
+    {% if lineas %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead><tr><th scope="col">Fecha</th><th scope="col">Movimiento</th><th scope="col">Cantidad</th>
+                <th scope="col">Costo unitario</th><th scope="col">Costo total</th><th scope="col">Saldo cantidad</th>
+                <th scope="col">Saldo costo promedio</th><th scope="col">Saldo valor</th><th scope="col">Detalle</th><th scope="col">Registró</th></tr></thead>
+            <tbody>
+                {% for l in lineas %}
+                <tr>
+                    <td>{{ l.fecha }}</td>
+                    <td>{{ {'entrada': 'Entrada', 'salida': 'Salida', 'baja': 'Baja'}[l.tipo] }}</td>
+                    <td>{{ '%g'|format(l.cantidad|float) }}</td>
+                    <td>{{ l.costo_unitario|pesos(2) }}</td>
+                    <td>{{ l.costo_total|pesos(2) }}</td>
+                    <td>{{ '%g'|format(l.saldo_cantidad|float) }}</td>
+                    <td>{{ l.saldo_costo_unitario|pesos(2) }}</td>
+                    <td>{{ l.saldo_valor|pesos(2) }}</td>
+                    <td>{{ l.detalle or '—' }}</td>
+                    <td>{{ l.registrado_por }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="ayuda" style="margin:10px 0 0;">Las salidas por baja usan el costo promedio vigente al momento de la baja.</p>
+    {% else %}
+    <p class="vacio">Este artículo todavía no tiene movimientos en el kárdex.</p>
+    {% endif %}
+</section>
+{% endif %}
+
+{% elif seccion == 'bajas' %}
+<section class="bloque-admin">
+    <h2>Registrar baja</h2>
+    {% if articulos %}
+    <form method="post" action="{{ url_for('finanzas.registrar_baja', sede_id=sede.id) }}"
+          style="display:grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap:10px; align-items:end; margin-bottom:12px;">
+        <label class="form-field"><span>Artículo</span>
+            <select name="articulo_id" required>
+                {% for a in articulos %}<option value="{{ a.id }}">{{ a.codigo }} · {{ a.nombre }} (existencia {{ '%g'|format(a.existencia|float) }})</option>{% endfor %}
+            </select></label>
+        <label class="form-field"><span>Fecha</span><input type="date" name="fecha" value="{{ hoy }}" required></label>
+        <label class="form-field"><span>Cantidad</span><input type="number" name="cantidad" min="0.001" step="0.001" required></label>
+        <label class="form-field"><span>Motivo</span><input type="text" name="motivo" required placeholder="Daño, vencimiento, pérdida"></label>
+        <button type="submit" class="boton-admin boton-admin-peligro"
+                data-confirmar="La baja descuenta la cantidad del kárdex y no se puede deshacer."
+                data-confirmar-titulo="¿Registrar esta baja?"
+                data-confirmar-icono="warning"
+                data-confirmar-boton="Sí, dar de baja"
+                data-confirmar-color="#cc3333"><i class="fa-solid fa-ban"></i> Dar de baja</button>
+    </form>
+    {% else %}
+    <p class="vacio">No hay artículos. Cree artículos en la sección Kárdex.</p>
+    {% endif %}
+</section>
+
+<section class="bloque-admin">
+    <h2>Bajas registradas <span class="contador">({{ bajas|length }})</span></h2>
+    {% if bajas %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead><tr><th scope="col">Fecha</th><th scope="col">Código</th><th scope="col">Artículo</th>
+                <th scope="col">Cantidad</th><th scope="col">Costo</th><th scope="col">Motivo</th><th scope="col">Registró</th></tr></thead>
+            <tbody>
+                {% for b in bajas %}
+                <tr>
+                    <td>{{ b.fecha }}</td><td>{{ b.codigo }}</td><td>{{ b.nombre }}</td>
+                    <td>{{ '%g'|format(b.cantidad|float) }}</td><td>{{ b.costo_total|pesos(2) }}</td>
+                    <td>{{ b.motivo }}</td><td>{{ b.registrado_por }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">Todavía no hay bajas en esta sede.</p>
+    {% endif %}
+</section>
+{% endif %}
+{% endblock %}

@@ -58,7 +58,11 @@
 <section class="bloque-admin">
     <h2 style="display:flex; align-items:center; gap:12px;">
         Estudiantes del curso <span class="contador">({{ estudiantes|length }})</span>
-        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-estudiantes" style="margin-left:auto;">
+        {% if estudiantes %}
+        <input type="search" id="buscar-estudiantes" placeholder="Buscar por nombre, documento o código" autocomplete="off"
+               style="margin-left:auto; width:300px; height:36px; padding:0 12px; border:1px solid #cbd5e1; border-radius:8px; font:inherit; font-size:14px; font-weight:400;">
+        {% endif %}
+        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-estudiantes" style="margin-left:8px;">
             <i class="fa-solid fa-user-plus"></i> Agregar estudiantes
         </button>
     </h2>
@@ -76,7 +80,7 @@
             </thead>
             <tbody>
                 {% for estudiante in estudiantes %}
-                <tr>
+                <tr class="fila-estudiante">
                     <td>{{ estudiante.codigo }}</td>
                     <td>{{ estudiante.nombre }}</td>
                     <td>{{ estudiante.documento }}</td>
@@ -95,6 +99,7 @@
             </tbody>
         </table>
     </div>
+    <p class="vacio" id="sin-resultados-estudiantes" style="display:none;">Ningún estudiante coincide con la búsqueda.</p>
     {% else %}
     <p class="vacio">Todavía no hay estudiantes matriculados en este curso. Use «Agregar estudiantes».</p>
     {% endif %}
@@ -116,4 +121,25 @@
 {% include 'admin/_agregar_materia.html' %}
 {% include 'admin/_agregar_estudiantes.html' %}
 
+<script>
+    // Buscador de estudiantes del curso: nombre, documento o código (sin distinguir tildes)
+    (function () {
+        var buscar = document.getElementById('buscar-estudiantes');
+        if (!buscar) return;
+        var sinResultados = document.getElementById('sin-resultados-estudiantes');
+        function normal(texto) {
+            return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+        }
+        buscar.addEventListener('input', function () {
+            var texto = normal(buscar.value.trim());
+            var visibles = 0;
+            document.querySelectorAll('tr.fila-estudiante').forEach(function (fila) {
+                var coincide = normal(fila.textContent).indexOf(texto) !== -1;
+                fila.style.display = coincide ? '' : 'none';
+                if (coincide) visibles++;
+            });
+            sinResultados.style.display = visibles === 0 ? '' : 'none';
+        });
+    })();
+</script>
 {% endblock %}

@@ -3,13 +3,19 @@ import os
 
 import uuid
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import generate_password_hash
 
 from nucleo.auditoria import asegurar
 from nucleo.db import IntegrityError, crear_base
 from nucleo.seguridad import requiere_rol
-from nucleo.sedes import conectar_central, conectar_sede, correo_en_uso, listar_sedes, nombre_nuevo_esquema
+from nucleo.sedes import (actualizar_financiero, buscar_administradora_por_id, buscar_financiero_por_id,
+                          cambiar_bloqueo_administradora, cambiar_bloqueo_financiero,
+                          crear_administradora_financiera, eliminar_administradora_financiera,
+                          listar_administradoras_financieras, conectar_central, conectar_sede,
+                          correo_en_uso, crear_financiero, eliminar_financiero, listar_auditoria_financieros,
+                          listar_financieros, listar_sedes, nombre_nuevo_esquema, registrar_acceso_financiero)
+from servicios import finanzas
 
 
 # Vistas de solo lectura de cada sede: (título, encabezados, consulta)
@@ -323,3 +329,212 @@ def eliminar_administrador(admin_id):
         central.close()
     flash('Administrador eliminado. Sus datos de la sede se conservan.', 'ok')
     return redirect(url_for('superadmin.inicio'))
+
+
+@superadmin_bp.route('/finanzas')
+@requiere_rol('superadmin')
+def finanzas_monitoreo():
+    """Monitoreo financiero: cada movimiento de cada sede, con su sede, y los usuarios del perfil financiero."""
+    sede_elegida = request.args.get('sede', '')
+    filtros = {'tipo': request.args.get('tipo', ''), 'desde': request.args.get('desde', ''),
+               'hasta': request.args.get('hasta', ''), 'anulados': request.args.get('anulados', '')}
+    resumenes, movimientos, bajas = [], [], []
+    for sede in listar_sedes():
+        conexion = conectar_sede(sede['archivo'])
+        try:
+            finanzas.asegurar(conexion)
+            resumenes.append({'sede': sede, 'resumen': finanzas.resumen(conexion)})
+            if sede_elegida and str(sede['id']) != sede_elegida:
+                continue
+            for movimiento in finanzas.listar_movimientos(
+                    conexion, tipo=filtros['tipo'], desde=filtros['desde'], hasta=filtros['hasta'],
+                    incluir_anulados=filtros['anulados'] == '1', limite=300):
+                movimientos.append({'sede': sede['nombre'], 'm': movimiento})
+            for baja in finanzas.listar_bajas(conexion, limite=100):
+                bajas.append({'sede': sede['nombre'], 'b': baja})
+        finally:
+            conexion.close()
+    movimientos.sort(key=lambda item: item['m']['creado_en'], reverse=True)
+    bajas.sort(key=lambda item: item['b']['creado_en'], reverse=True)
+    return render_template('superadmin/finanzas.html', sedes=listar_sedes(), sede_elegida=sede_elegida,
+                           filtros=filtros, resumenes=resumenes, movimientos=movimientos[:300],
+                           bajas=bajas[:100], usuarios=listar_financieros(),
+                           bitacora=listar_auditoria_financieros(),
+                           administradoras=listar_administradoras_financieras(),
+                           indicadores=finanzas.indicadores_globales())
+
+
+@superadmin_bp.route('/finanzas/usuarios', methods=['POST'])
+@requiere_rol('superadmin')
+def crear_usuario_financiero():
+    correo = request.form.get('correo', '').strip().lower()
+    nombre = request.form.get('nombre', '').strip()
+    contrasena = request.form.get('contrasena', '')
+    sede_id = request.form.get('sede_id', '')
+    sedes = {str(s['id']): s for s in listar_sedes()}
+    if '@' not in correo:
+        flash('Escriba un correo válido.', 'error')
+    elif not nombre:
+        flash('Escriba el nombre de la persona.', 'error')
+    elif len(contrasena) < 6:
+        flash('La contraseña debe tener al menos 6 caracteres.', 'error')
+    elif sede_id not in sedes:
+        flash('Seleccione la sede de finanzas a la que pertenece.', 'error')
+    elif correo == os.environ.get('DEV_CORREO', '').strip().lower() or correo_en_uso(correo):
+        flash('Ese correo ya está en uso.', 'error')
+    else:
+        try:
+            crear_financiero(correo, nombre, generate_password_hash(contrasena), int(sede_id))
+            registrar_acceso_financiero(session['usuario'], 'crear_acceso',
+                                        f'Creó el acceso de {correo} ({nombre}) para {sedes[sede_id]["nombre"]}')
+            flash('Usuario financiero creado. Ya puede ingresar con su correo y contraseña.', 'ok')
+        except IntegrityError:
+            flash('Ese correo ya está en uso.', 'error')
+    return redirect(url_for('superadmin.finanzas_monitoreo'))
+
+
+@superadmin_bp.route('/finanzas/usuarios/<int:usuario_id>/eliminar', methods=['POST'])
+@requiere_rol('superadmin')
+def eliminar_usuario_financiero(usuario_id):
+    usuario = buscar_financiero_por_id(usuario_id)
+    if usuario is None:
+        abort(404)
+    eliminar_financiero(usuario_id)
+    registrar_acceso_financiero(session['usuario'], 'quitar_acceso', f'Quitó el acceso de {usuario["correo"]}')
+    flash('Usuario financiero eliminado. Sus movimientos quedan registrados en cada sede.', 'ok')
+    return redirect(url_for('superadmin.finanzas_monitoreo'))
+
+
+@superadmin_bp.route('/finanzas/usuarios/<int:usuario_id>/bloqueo', methods=['POST'])
+@requiere_rol('superadmin')
+def cambiar_bloqueo_usuario_financiero(usuario_id):
+    """Bloquea o desbloquea el acceso del usuario financiero. Sus datos y su historial no cambian."""
+    usuario = buscar_financiero_por_id(usuario_id)
+    if usuario is None:
+        abort(404)
+    bloquear = not usuario['bloqueado']
+    cambiar_bloqueo_financiero(usuario_id, bloquear)
+    accion = 'bloquear_acceso' if bloquear else 'desbloquear_acceso'
+    registrar_acceso_financiero(session['usuario'], accion, f'{"Bloqueó" if bloquear else "Desbloqueó"} a {usuario["correo"]}')
+    if bloquear:
+        flash('Usuario bloqueado. No podrá ingresar y, si tiene sesión abierta, quedará deshabilitado.', 'ok')
+    else:
+        flash('Usuario desbloqueado. Ya puede ingresar de nuevo.', 'ok')
+    return redirect(url_for('superadmin.finanzas_monitoreo'))
+
+
+@superadmin_bp.route('/finanzas/sede/<int:sede_id>')
+@requiere_rol('superadmin')
+def finanzas_sede(sede_id):
+    """Finanzas de una sede, solo para consultar. Desde aquí no se cambia nada de la sede."""
+    sede = next((s for s in listar_sedes() if s['id'] == sede_id), None)
+    if sede is None:
+        abort(404)
+    seccion = request.args.get('seccion', 'resumen')
+    if seccion not in finanzas.SECCIONES_SEDE:
+        abort(404)
+    conexion = conectar_sede(sede['archivo'])
+    try:
+        contexto = finanzas.datos_vista_sede(conexion, seccion)
+    finally:
+        conexion.close()
+    return render_template('superadmin/finanzas_sede.html', sede=sede, seccion=seccion,
+                           secciones=finanzas.SECCIONES_SEDE, **contexto)
+
+
+@superadmin_bp.route('/finanzas/usuarios/<int:usuario_id>/editar', methods=['POST'])
+@requiere_rol('superadmin')
+def editar_usuario_financiero(usuario_id):
+    """Cambia nombre, correo, sede o contraseña del usuario financiero. La contraseña es opcional."""
+    usuario = buscar_financiero_por_id(usuario_id)
+    if usuario is None:
+        abort(404)
+    correo = request.form.get('correo', '').strip().lower()
+    nombre = request.form.get('nombre', '').strip()
+    sede_id = request.form.get('sede_id', '')
+    contrasena = request.form.get('contrasena', '')
+    sedes = {str(s['id']): s for s in listar_sedes()}
+    cambia_correo = correo != usuario['correo']
+    if '@' not in correo:
+        flash('Escriba un correo válido.', 'error')
+    elif not nombre:
+        flash('Escriba el nombre de la persona.', 'error')
+    elif sede_id not in sedes:
+        flash('Seleccione la sede de finanzas a la que pertenece.', 'error')
+    elif contrasena and len(contrasena) < 6:
+        flash('La nueva contraseña debe tener al menos 6 caracteres.', 'error')
+    elif cambia_correo and (correo == os.environ.get('DEV_CORREO', '').strip().lower() or correo_en_uso(correo)):
+        flash('Ese correo ya está en uso.', 'error')
+    else:
+        try:
+            actualizar_financiero(usuario_id, correo, nombre, int(sede_id),
+                                  generate_password_hash(contrasena) if contrasena else None)
+        except IntegrityError:
+            flash('Ese correo ya está en uso.', 'error')
+            return redirect(url_for('superadmin.finanzas_monitoreo'))
+        # La bitácora anota qué cambió, sin guardar contraseñas
+        cambios = []
+        if correo != usuario['correo']:
+            cambios.append(f'correo {usuario["correo"]} → {correo}')
+        if nombre != usuario['nombre']:
+            cambios.append(f'nombre {usuario["nombre"]} → {nombre}')
+        if contrasena:
+            cambios.append('contraseña cambiada')
+        registrar_acceso_financiero(session['usuario'], 'editar_acceso',
+                                    f'Editó a {usuario["correo"]}: ' + ('; '.join(cambios) or 'sin cambios')
+                                    + f'. Sede: {sedes[sede_id]["nombre"]}')
+        flash('Datos del usuario actualizados.', 'ok')
+    return redirect(url_for('superadmin.finanzas_monitoreo'))
+
+
+@superadmin_bp.route('/finanzas/administradoras', methods=['POST'])
+@requiere_rol('superadmin')
+def crear_administradora_financiera_ruta():
+    """Crea una administradora financiera: ve las cuentas de todas las sedes, en solo lectura."""
+    correo = request.form.get('correo', '').strip().lower()
+    nombre = request.form.get('nombre', '').strip()
+    contrasena = request.form.get('contrasena', '')
+    if '@' not in correo:
+        flash('Escriba un correo válido.', 'error')
+    elif not nombre:
+        flash('Escriba el nombre de la administradora.', 'error')
+    elif len(contrasena) < 6:
+        flash('La contraseña debe tener al menos 6 caracteres.', 'error')
+    elif correo == os.environ.get('DEV_CORREO', '').strip().lower() or correo_en_uso(correo):
+        flash('Ese correo ya está en uso.', 'error')
+    else:
+        try:
+            crear_administradora_financiera(correo, nombre, generate_password_hash(contrasena))
+        except IntegrityError:
+            flash('Ese correo ya está en uso.', 'error')
+            return redirect(url_for('superadmin.finanzas_monitoreo'))
+        registrar_acceso_financiero(session['usuario'], 'crear_administradora', f'Creó la administradora {correo} ({nombre})')
+        flash('Administradora financiera creada. Ya puede ingresar y ver las sedes en solo lectura.', 'ok')
+    return redirect(url_for('superadmin.finanzas_monitoreo'))
+
+
+@superadmin_bp.route('/finanzas/administradoras/<int:admin_id>/bloqueo', methods=['POST'])
+@requiere_rol('superadmin')
+def bloqueo_administradora_financiera(admin_id):
+    admin = buscar_administradora_por_id(admin_id)
+    if admin is None:
+        abort(404)
+    bloquear = not admin['bloqueado']
+    cambiar_bloqueo_administradora(admin_id, bloquear)
+    accion = 'bloquear_administradora' if bloquear else 'desbloquear_administradora'
+    registrar_acceso_financiero(session['usuario'], accion,
+                                f'{"Bloqueó" if bloquear else "Desbloqueó"} a la administradora {admin["correo"]}')
+    flash('Administradora bloqueada. No podrá ingresar.' if bloquear else 'Administradora desbloqueada.', 'ok')
+    return redirect(url_for('superadmin.finanzas_monitoreo'))
+
+
+@superadmin_bp.route('/finanzas/administradoras/<int:admin_id>/eliminar', methods=['POST'])
+@requiere_rol('superadmin')
+def eliminar_administradora_financiera_ruta(admin_id):
+    admin = buscar_administradora_por_id(admin_id)
+    if admin is None:
+        abort(404)
+    eliminar_administradora_financiera(admin_id)
+    registrar_acceso_financiero(session['usuario'], 'quitar_administradora', f'Quitó a la administradora {admin["correo"]}')
+    flash('Administradora quitada. Su historial queda en la bitácora.', 'ok')
+    return redirect(url_for('superadmin.finanzas_monitoreo'))
