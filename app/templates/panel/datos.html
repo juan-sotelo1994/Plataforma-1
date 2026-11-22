@@ -7,6 +7,22 @@
 <h1>Actualizar mis datos</h1>
 <p>Revise sus datos de contacto y de su familia. Los campos con <strong>*</strong> son obligatorios. El documento y el correo no se pueden cambiar desde aquí.</p>
 
+<section class="bloque-admin" style="margin-bottom:18px;">
+    <h2>Mi foto</h2>
+    <p class="ayuda" style="margin:0 0 12px;">Su foto aparece en el reporte de notas en PDF. Use una imagen JPG o PNG de máximo 2 MB.</p>
+    <div style="display:flex; gap:18px; align-items:center; flex-wrap:wrap;">
+        {% if tiene_foto %}
+        <img src="{{ url_for('dashboard.ver_foto') }}" alt="Su foto" style="width:96px; height:120px; object-fit:cover; border-radius:8px; border:1px solid #cbd5e1;">
+        {% else %}
+        <span class="vacio" style="width:96px; height:120px; display:flex; align-items:center; justify-content:center; border:1px dashed #cbd5e1; border-radius:8px;">Sin foto</span>
+        {% endif %}
+        <form method="post" action="{{ url_for('dashboard.subir_foto') }}" enctype="multipart/form-data" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <input type="file" name="foto" accept="image/jpeg,image/png,.jpg,.jpeg,.png" required>
+            <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-upload"></i> Subir foto</button>
+        </form>
+    </div>
+</section>
+
 <form method="post" action="{{ url_for('dashboard.datos') }}" class="bloque-admin bloque-formulario">
     <section>
         <h2>Mis datos</h2>

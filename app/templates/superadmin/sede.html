@@ -41,6 +41,7 @@
                 <span class="topbar-title">Sede · {{ sede.nombre }}</span>
                 <div class="topbar-usuario">
                     <span class="correo">{{ session.usuario }}</span>
+                    <a href="{{ url_for('autenticar.configuracion') }}">CONFIGURACIÓN</a>
                     <a href="{{ url_for('autenticar.logout') }}">CERRAR SESIÓN</a>
                 </div>
             </header>

@@ -118,11 +118,15 @@ ENTIDADES = {
         'titulo': 'Estudiantes',
         'singular': 'estudiante',
         'tabla': 'estudiantes',
+        'filtros': True,
         'consulta': ("SELECT e.id, e.codigo, e.nombres || ' ' || e.apellidos AS nombre, "
                      "e.documento, e.correo, e.programa, j.nombre AS jornada, "
                      "CASE WHEN EXISTS (SELECT 1 FROM usuarios u WHERE u.estudiante_id = e.id) "
                      "THEN 'Habilitado' ELSE 'Sin acceso' END AS acceso, "
-                     "EXISTS (SELECT 1 FROM aspirantes a WHERE a.estudiante_id = e.id OR a.documento = e.documento) AS inscrito "
+                     "EXISTS (SELECT 1 FROM aspirantes a WHERE a.estudiante_id = e.id OR a.documento = e.documento) AS inscrito, "
+                     "e.jornada_id AS jornada_id, "
+                     "(SELECT GROUP_CONCAT(DISTINCT c.grupo_id) FROM matriculas mt JOIN cursos c ON c.id = mt.curso_id "
+                     "WHERE mt.estudiante_id = e.id) AS cursos_ids "
                      "FROM estudiantes e LEFT JOIN jornadas j ON j.id = e.jornada_id "
                      "ORDER BY e.apellidos, e.nombres"),
         'columnas': [('Código', 'codigo'), ('Nombre', 'nombre'), ('Documento', 'documento'),
@@ -186,8 +190,9 @@ ENTIDADES = {
         'titulo': 'Matrículas',
         'singular': 'matrícula',
         'tabla': 'matriculas',
+        'filtros': True,
         'consulta': ("SELECT mt.id, e.codigo, e.apellidos || ' ' || e.nombres AS estudiante, "
-                     "m.nombre AS materia, c.grupo, c.periodo, "
+                     "m.nombre AS materia, c.grupo, c.periodo, c.grupo_id AS cursos_ids, e.jornada_id AS jornada_id, "
                      "COALESCE(d.nombres || ' ' || d.apellidos, 'Sin asignar') AS docente "
                      "FROM matriculas mt "
                      "JOIN estudiantes e ON e.id = mt.estudiante_id "
@@ -453,10 +458,12 @@ def entidad(entidad):
 
     materias_opciones = None
     datos_extra = _datos_nuevo_curso() if entidad == 'cursos' else {}
+    cursos_filtro, jornadas_filtro = mf.opciones_filtro() if config.get('filtros') else ([], [])
     return render_template('admin/entidad.html', entidad=entidad, config=config,
                            filas=filas, campos=campos, entidades=ENTIDADES,
                            materias_opciones=materias_opciones, seleccionadas=set(),
-                           editando=False, registro_id=None, **datos_extra)
+                           editando=False, registro_id=None, cursos=cursos_filtro, jornadas=jornadas_filtro,
+                           **datos_extra)
 
 
 CICLOS_PLAN = ('1', '2', '3', '4', '5', '6')
@@ -997,10 +1004,11 @@ def editar(entidad, registro_id):
             'SELECT materia_id FROM docente_materias WHERE docente_id = ?', (registro_id,)).fetchall()}
 
     filas = db.execute(config['consulta']).fetchall()
+    cursos_filtro, jornadas_filtro = mf.opciones_filtro() if config.get('filtros') else ([], [])
     return render_template('admin/entidad.html', entidad=entidad, config=config, filas=filas,
                            campos=campos, entidades=ENTIDADES, materias_opciones=materias_opciones,
                            seleccionadas=seleccionadas or set(),
-                           editando=True, registro_id=registro_id)
+                           editando=True, registro_id=registro_id, cursos=cursos_filtro, jornadas=jornadas_filtro)
 
 
 @admin_bp.route('/<entidad>/<int:registro_id>/eliminar', methods=['POST'])
@@ -1168,8 +1176,15 @@ def descargar_documento(documento_id):
 @requiere_admin
 def pagos_matricula():
     busqueda = request.args.get('q', '').strip()[:100]
-    return render_template('admin/pagos_matricula.html', registros=mf.estudiantes_con_matricula(busqueda),
-                           q=busqueda, modalidades=mf.MODALIDADES)
+    grupo_id = request.args.get('curso', '')
+    jornada_id = request.args.get('jornada', '')
+    grupo_id = int(grupo_id) if grupo_id.isdigit() else None
+    jornada_id = int(jornada_id) if jornada_id.isdigit() else None
+    cursos, jornadas = mf.opciones_filtro()
+    return render_template('admin/pagos_matricula.html',
+                           registros=mf.estudiantes_con_matricula(busqueda, grupo_id, jornada_id),
+                           q=busqueda, modalidades=mf.MODALIDADES, cursos=cursos, jornadas=jornadas,
+                           curso_sel=grupo_id, jornada_sel=jornada_id)
 
 
 @admin_bp.route('/pagos-matricula/<int:recibo_id>/descargar')

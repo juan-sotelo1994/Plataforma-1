@@ -129,18 +129,34 @@ def recibo_del_estudiante(recibo_id, estudiante_id):
         (recibo_id, estudiante_id)).fetchone()
 
 
-def estudiantes_con_matricula(busqueda=''):
-    """Todos los estudiantes con su recibo de matrícula financiera. Sin recibo, aparecen en una sola fila."""
+def opciones_filtro():
+    """Cursos (grupos) y jornadas para filtrar la lista de matrícula financiera."""
+    db = get_db()
+    cursos = db.execute('SELECT id, grupo, periodo FROM grupos_curso ORDER BY periodo DESC, ciclo, grupo').fetchall()
+    jornadas = db.execute('SELECT id, nombre FROM jornadas ORDER BY nombre').fetchall()
+    return cursos, jornadas
+
+
+def estudiantes_con_matricula(busqueda='', grupo_id=None, jornada_id=None):
+    """Estudiantes con su recibo de matrícula financiera. Sin recibo, aparecen en una sola fila.
+
+    El curso filtra a los estudiantes matriculados en alguna materia de ese curso; la jornada, a la del estudiante.
+    """
     db = get_db()
     asegurar(db)
     patron = f'%{busqueda}%'
     return db.execute(
         "SELECT e.id AS estudiante_id, e.codigo, e.nombres, e.apellidos, e.documento, "
+        "(SELECT GROUP_CONCAT(DISTINCT g.grupo) FROM matriculas mt JOIN cursos c ON c.id = mt.curso_id "
+        " JOIN grupos_curso g ON g.id = c.grupo_id WHERE mt.estudiante_id = e.id) AS cursos, "
         "r.id AS recibo_id, r.modalidad, r.periodo, r.fecha_pago, r.nombre_original, r.estado, r.observacion "
         "FROM estudiantes e LEFT JOIN recibos_matricula r ON r.estudiante_id = e.id "
-        "WHERE ? = '' OR e.nombres LIKE ? OR e.apellidos LIKE ? OR e.documento LIKE ? OR e.codigo LIKE ? "
+        "WHERE (? = '' OR e.nombres LIKE ? OR e.apellidos LIKE ? OR e.documento LIKE ? OR e.codigo LIKE ?) "
+        "AND (? IS NULL OR EXISTS (SELECT 1 FROM matriculas mt JOIN cursos c ON c.id = mt.curso_id "
+        "     WHERE mt.estudiante_id = e.id AND c.grupo_id = ?)) "
+        "AND (? IS NULL OR e.jornada_id = ?) "
         "ORDER BY e.apellidos, e.nombres, r.periodo DESC, r.modalidad",
-        (busqueda, patron, patron, patron, patron)).fetchall()
+        (busqueda, patron, patron, patron, patron, grupo_id, grupo_id, jornada_id, jornada_id)).fetchall()
 
 
 def revisar_recibo(recibo_id, estado, observacion):

@@ -18,6 +18,21 @@ import datetime
 from nucleo.auditoria import registrar
 from nucleo.db import get_db
 
+ESQUEMA_OBSERVACIONES = """
+CREATE TABLE IF NOT EXISTS observaciones_notas (
+    curso_id INTEGER NOT NULL REFERENCES cursos(id) ON DELETE CASCADE,
+    estudiante_id INTEGER NOT NULL REFERENCES estudiantes(id) ON DELETE CASCADE,
+    texto TEXT NOT NULL,
+    PRIMARY KEY (curso_id, estudiante_id)
+)
+"""
+
+
+def asegurar_observaciones(db):
+    """La tabla se crea sola: las bases de las sedes que ya existían también la reciben."""
+    db.execute(ESQUEMA_OBSERVACIONES)
+
+
 PLAZO_CERRADO = 'El plazo para subir notas de este periodo ya cerró. Puede consultarlas, pero no cambiarlas.'
 
 
@@ -84,6 +99,10 @@ def estudiantes_con_notas(curso_id):
             (curso_id,)).fetchall():
         notas_por_estudiante.setdefault(fila['estudiante_id'], {})[fila['criterio_id']] = fila['nota']
 
+    asegurar_observaciones(db)
+    observaciones = {fila['estudiante_id']: fila['texto'] for fila in db.execute(
+        'SELECT estudiante_id, texto FROM observaciones_notas WHERE curso_id = ?', (curso_id,)).fetchall()}
+
     estudiantes = []
     for fila in db.execute(
             "SELECT e.id, e.codigo, e.documento, e.nombres, e.apellidos, "
@@ -94,7 +113,8 @@ def estudiantes_con_notas(curso_id):
         notas = notas_por_estudiante.get(fila['id'], {})
         estudiantes.append({'id': fila['id'], 'codigo': fila['codigo'], 'documento': fila['documento'],
                             'nombres': fila['nombres'], 'apellidos': fila['apellidos'], 'nombre': fila['nombre'],
-                            'notas': notas, 'definitiva': definitiva(lista_criterios, notas)})
+                            'notas': notas, 'definitiva': definitiva(lista_criterios, notas),
+                            'observacion': observaciones.get(fila['id'], '')})
     return lista_criterios, total, estudiantes
 
 
@@ -187,6 +207,18 @@ def guardar_notas(curso_id, formulario):
                 'INSERT INTO notas_criterio (criterio_id, estudiante_id, nota) VALUES (?, ?, ?) '
                 'ON CONFLICT (criterio_id, estudiante_id) DO UPDATE SET nota = excluded.nota',
                 (criterio_id, estudiante_id, valor))
+    # Observación del docente para cada estudiante; un campo vacío la borra
+    asegurar_observaciones(db)
+    for estudiante_id in matriculados:
+        texto = formulario.get(f'obs_{estudiante_id}', '').strip()[:300]
+        if texto:
+            db.execute(
+                'INSERT INTO observaciones_notas (curso_id, estudiante_id, texto) VALUES (?, ?, ?) '
+                'ON CONFLICT (curso_id, estudiante_id) DO UPDATE SET texto = excluded.texto',
+                (curso_id, estudiante_id, texto))
+        else:
+            db.execute('DELETE FROM observaciones_notas WHERE curso_id = ? AND estudiante_id = ?',
+                       (curso_id, estudiante_id))
     recalcular_definitivas(curso_id)
     registradas = sum(1 for c in cambios if c[2] is not None)
     registrar(db, 'notas', f'curso id {curso_id}: {registradas} calificación(es) parcial(es)')

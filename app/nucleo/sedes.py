@@ -21,6 +21,12 @@ CREATE TABLE IF NOT EXISTS admins_sede (
     contrasena_hash TEXT NOT NULL,
     sede_id INTEGER NOT NULL REFERENCES sedes(id) ON DELETE CASCADE
 );
+
+-- Contraseña del superadministrador después de cambiarla (si no existe, vale la del .env)
+CREATE TABLE IF NOT EXISTS credencial_superadmin (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    contrasena_hash TEXT NOT NULL
+);
 """
 
 

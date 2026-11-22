@@ -49,6 +49,7 @@
                     <span class="usuario-avatar"><i class="fa-solid fa-user"></i></span>
                     <span class="correo">{{ session.usuario }}</span>
                     <a href="{{ url_for('web.inicio') }}">INICIO</a>
+                    <a href="{{ url_for('autenticar.configuracion') }}">CONFIGURACIÓN</a>
                     <a href="{{ url_for('autenticar.logout') }}">CERRAR SESIÓN</a>
                 </div>
             </header>

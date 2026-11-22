@@ -2,11 +2,11 @@ import hmac
 import os
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from nucleo.auditoria import registrar
 from nucleo.sedes import RUTA_CENTRAL, conectar, listar_sedes, ruta_sede
-from nucleo.seguridad import destino_por_rol
+from nucleo.seguridad import INICIO_POR_ROL, destino_por_rol, requiere_rol
 
 
 autenticar = Blueprint('autenticar', __name__, url_prefix='/acceso')
@@ -20,8 +20,13 @@ def _cuenta_administrador(correo, contrasena):
     clave_ok = os.environ.get('DEV_CONTRASENA', '')
     if not correo_ok or not clave_ok:
         return False
-    return (hmac.compare_digest(correo.encode(), correo_ok.encode())
-            and hmac.compare_digest(contrasena.encode(), clave_ok.encode()))
+    if not hmac.compare_digest(correo.encode(), correo_ok.encode()):
+        return False
+    # Si el superadministrador ya cambió su contraseña, vale la nueva; si no, la del .env
+    guardada = _hash_superadmin()
+    if guardada:
+        return check_password_hash(guardada, contrasena)
+    return hmac.compare_digest(contrasena.encode(), clave_ok.encode())
 
 
 def _autenticar_en_sede(ruta, correo, contrasena):
@@ -120,3 +125,121 @@ def recuperar_codigo():
     return render_template('auth/recuperar_codigo.html',
                            correo_oculto='', restante=0, reenviar_en=0,
                            canal='correo', mensaje=None, errores={})
+
+
+# Cuentas con contraseña propia: el superadministrador, los administradores de sede y las personas de cada sede
+ROLES_CON_CONFIGURACION = ('superadmin', 'admin', 'docente', 'estudiante', 'aspirante', 'administrativo', 'auxiliar')
+ETIQUETAS_ROL = {'superadmin': 'Superadministrador', 'admin': 'Administrador de sede', 'docente': 'Docente',
+                 'estudiante': 'Estudiante', 'aspirante': 'Aspirante', 'administrativo': 'Administrativo',
+                 'auxiliar': 'Auxiliar'}
+
+
+def _hash_superadmin():
+    central = conectar(RUTA_CENTRAL)
+    try:
+        fila = central.execute('SELECT contrasena_hash FROM credencial_superadmin WHERE id = 1').fetchone()
+    finally:
+        central.close()
+    return fila['contrasena_hash'] if fila else None
+
+
+def _hash_vigente(rol, correo):
+    """Hash de la contraseña actual. None si el superadministrador todavía usa la del .env."""
+    if rol == 'superadmin':
+        return _hash_superadmin()
+    if rol == 'admin':
+        central = conectar(RUTA_CENTRAL)
+        try:
+            fila = central.execute('SELECT contrasena_hash FROM admins_sede WHERE correo = ?', (correo,)).fetchone()
+        finally:
+            central.close()
+        return fila['contrasena_hash'] if fila else None
+    conexion = conectar(ruta_sede(session['sede_archivo']))
+    try:
+        fila = conexion.execute(
+            'SELECT contrasena_hash FROM usuarios WHERE correo = ? '
+            'UNION ALL SELECT contrasena_hash FROM aspirantes WHERE correo = ? LIMIT 1',
+            (correo, correo)).fetchone()
+    finally:
+        conexion.close()
+    return fila['contrasena_hash'] if fila else None
+
+
+def _guardar_contrasena(rol, correo, hash_nuevo):
+    if rol == 'superadmin':
+        central = conectar(RUTA_CENTRAL)
+        try:
+            central.execute(
+                'INSERT INTO credencial_superadmin (id, contrasena_hash) VALUES (1, ?) '
+                'ON CONFLICT (id) DO UPDATE SET contrasena_hash = excluded.contrasena_hash', (hash_nuevo,))
+            central.commit()
+        finally:
+            central.close()
+    elif rol == 'admin':
+        central = conectar(RUTA_CENTRAL)
+        try:
+            central.execute('UPDATE admins_sede SET contrasena_hash = ? WHERE correo = ?', (hash_nuevo, correo))
+            central.commit()
+        finally:
+            central.close()
+    else:
+        # La misma contraseña queda en la cuenta de ingreso y en la ficha de aspirante, si la hay
+        conexion = conectar(ruta_sede(session['sede_archivo']))
+        try:
+            conexion.execute('UPDATE usuarios SET contrasena_hash = ? WHERE correo = ?', (hash_nuevo, correo))
+            conexion.execute('UPDATE aspirantes SET contrasena_hash = ? WHERE correo = ?', (hash_nuevo, correo))
+            registrar(conexion, 'contrasena_cambiada', 'Cambió su contraseña', usuario=correo)
+            conexion.commit()
+        finally:
+            conexion.close()
+
+
+def _contrasena_actual_ok(rol, correo, actual):
+    guardada = _hash_vigente(rol, correo)
+    if guardada is None:
+        # Superadministrador sin cambios: vale la clave del .env
+        return _cuenta_administrador(correo, actual)
+    return check_password_hash(guardada, actual)
+
+
+def _base_configuracion(rol):
+    """Cada perfil muestra la página dentro de su propio menú; los demás usan el menú común."""
+    if rol == 'admin':
+        return 'admin/base_admin.html'
+    if rol == 'docente':
+        return 'docente/base_docente.html'
+    if rol == 'estudiante':
+        return 'panel/base_panel.html'
+    return 'auth/base_configuracion.html'
+
+
+@autenticar.route('/configuracion', methods=['GET', 'POST'])
+@requiere_rol(*ROLES_CON_CONFIGURACION)
+def configuracion():
+    rol = session['rol']
+    correo = session['usuario']
+    if request.method == 'POST':
+        actual = request.form.get('actual', '')
+        nueva = request.form.get('nueva', '')
+        confirmacion = request.form.get('confirmacion', '')
+        if not _contrasena_actual_ok(rol, correo, actual):
+            flash('La contraseña actual no es correcta.', 'error')
+        elif len(nueva) < 6:
+            flash('La nueva contraseña debe tener al menos 6 caracteres.', 'error')
+        elif nueva != confirmacion:
+            flash('La confirmación no coincide con la nueva contraseña.', 'error')
+        elif nueva == actual:
+            flash('La nueva contraseña debe ser distinta de la actual.', 'error')
+        else:
+            _guardar_contrasena(rol, correo, generate_password_hash(nueva))
+            flash('Su contraseña fue actualizada. Desde ahora ingrese con la nueva.', 'ok')
+            return redirect(url_for('autenticar.configuracion'))
+
+    extra = {}
+    if rol == 'estudiante':
+        # El menú del estudiante necesita sus datos y los grupos del menú
+        from blueprints.dash import MENU_GRUPOS, _datos_estudiante
+        extra = {'usuario': _datos_estudiante(session['persona_id']), 'grupos': MENU_GRUPOS}
+    return render_template('auth/configuracion.html', base=_base_configuracion(rol), rol=rol,
+                           etiqueta_rol=ETIQUETAS_ROL[rol], correo=correo,
+                           inicio=url_for(INICIO_POR_ROL[rol]), **extra)
