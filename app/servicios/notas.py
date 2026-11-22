@@ -15,6 +15,7 @@ from werkzeug.utils import secure_filename
 
 import datetime
 
+from nucleo.auditoria import registrar
 from nucleo.db import get_db
 
 PLAZO_CERRADO = 'El plazo para subir notas de este periodo ya cerró. Puede consultarlas, pero no cambiarlas.'
@@ -139,6 +140,7 @@ def agregar_criterio(curso_id, nombre, bruto_porcentaje):
                        (curso_id,)).fetchone()[0]
     db.execute('INSERT INTO criterios_evaluacion (curso_id, nombre, porcentaje, orden) VALUES (?, ?, ?, ?)',
                (curso_id, nombre, porcentaje, orden))
+    registrar(db, 'criterio_agregado', f'{nombre} {porcentaje:g} % en el curso id {curso_id}')
     db.commit()
     return True, 'Criterio agregado.'
 
@@ -147,6 +149,7 @@ def eliminar_criterio(curso_id, criterio_id):
     db = get_db()
     db.execute('DELETE FROM criterios_evaluacion WHERE id = ? AND curso_id = ?', (criterio_id, curso_id))
     recalcular_definitivas(curso_id)
+    registrar(db, 'criterio_eliminado', f'criterio id {criterio_id} del curso id {curso_id}')
     db.commit()
 
 
@@ -185,8 +188,9 @@ def guardar_notas(curso_id, formulario):
                 'ON CONFLICT (criterio_id, estudiante_id) DO UPDATE SET nota = excluded.nota',
                 (criterio_id, estudiante_id, valor))
     recalcular_definitivas(curso_id)
-    db.commit()
     registradas = sum(1 for c in cambios if c[2] is not None)
+    registrar(db, 'notas', f'curso id {curso_id}: {registradas} calificación(es) parcial(es)')
+    db.commit()
     return True, f'Notas guardadas. Se registraron {registradas} calificación(es) parcial(es).'
 
 

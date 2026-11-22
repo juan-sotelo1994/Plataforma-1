@@ -1,0 +1,134 @@
+{% from '_alertas.html' import modal_errores, modal_avisos %}
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoreo | {{ empresa.nombre }}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/consola.css') }}">
+</head>
+
+<body>
+    <div class="panel" id="panel">
+        <aside class="sidebar" id="sidebar" aria-label="Menú del superadministrador">
+            <div class="sidebar-head">
+                <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="30" height="30">
+                <strong>{{ empresa.nombre }}</strong>
+            </div>
+            <nav class="sidebar-nav">
+                <section class="grupo">
+                    <h3 class="grupo-titulo"><i class="fa-solid fa-building"></i>Sedes</h3>
+                    <ul>
+                        <li><a href="{{ url_for('superadmin.inicio') }}"><i class="fa-solid fa-building"></i>Sedes y administradores</a></li>
+                        <li><a href="{{ url_for('superadmin.monitoreo') }}"><i class="fa-solid fa-chart-line"></i>Monitoreo general</a></li>
+                    </ul>
+                </section>
+            </nav>
+            <div class="sidebar-foot">
+                <strong>SUPERADMIN</strong>
+                <span>v1.0</span>
+            </div>
+        </aside>
+
+        <div class="main">
+            <header class="topbar">
+                <span class="topbar-title">Superadministración · Monitoreo</span>
+                <div class="topbar-usuario">
+                    <span class="correo">{{ session.usuario }}</span>
+                    <a href="{{ url_for('autenticar.logout') }}">CERRAR SESIÓN</a>
+                </div>
+            </header>
+
+            <main class="content">
+                {% with mensajes = get_flashed_messages(with_categories=true) %}
+                {{ modal_errores(mensajes) }}
+                {{ modal_avisos(mensajes) }}
+                {% endwith %}
+
+                <h1>Monitoreo general</h1>
+                <p class="ayuda" style="margin:0 0 14px;">Cifras de todas las sedes. Para ver el detalle de una sede, use «Ver».</p>
+
+                <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap:12px; margin-bottom:18px;">
+                    <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+                        <div class="contador">Sedes</div>
+                        <div style="font-size:24px; font-weight:700;">{{ filas|length }}</div>
+                    </div>
+                    <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+                        <div class="contador">Estudiantes</div>
+                        <div style="font-size:24px; font-weight:700;">{{ totales.estudiantes }}</div>
+                    </div>
+                    <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+                        <div class="contador">Docentes</div>
+                        <div style="font-size:24px; font-weight:700;">{{ totales.docentes }}</div>
+                    </div>
+                    <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+                        <div class="contador">Matrículas</div>
+                        <div style="font-size:24px; font-weight:700;">{{ totales.matriculas }}</div>
+                    </div>
+                    <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+                        <div class="contador">Avance de notas</div>
+                        <div style="font-size:24px; font-weight:700;">{{ totales.avance }} %</div>
+                    </div>
+                </div>
+
+                <section class="bloque-admin">
+                    <h2>Sedes <span class="contador">({{ filas|length }})</span></h2>
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Sede</th>
+                                    <th scope="col">Estudiantes</th>
+                                    <th scope="col">Docentes</th>
+                                    <th scope="col">Cursos</th>
+                                    <th scope="col">Materias dictadas</th>
+                                    <th scope="col">Matrículas</th>
+                                    <th scope="col">Avance de notas</th>
+                                    <th scope="col">Aspirantes</th>
+                                    <th scope="col">Última actividad</th>
+                                    <th scope="col">Ver</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for fila in filas %}
+                                <tr>
+                                    <td><strong>{{ fila.sede.nombre }}</strong></td>
+                                    <td>{{ fila.cifras.estudiantes }}</td>
+                                    <td>{{ fila.cifras.docentes }}</td>
+                                    <td>{{ fila.cifras.grupos }}</td>
+                                    <td>{{ fila.cifras.materias }}</td>
+                                    <td>{{ fila.cifras.matriculas }}</td>
+                                    <td>{{ fila.cifras.avance }} %</td>
+                                    <td>{{ fila.cifras.aspirantes }}</td>
+                                    <td>{{ fila.cifras.ultima or '—' }}</td>
+                                    <td>
+                                        <a href="{{ url_for('superadmin.ver_sede', sede_id=fila.sede.id, seccion='horarios') }}" class="boton-admin" style="height:30px; padding:0 8px; font-size:13px;">Horarios</a>
+                                        <a href="{{ url_for('superadmin.ver_sede', sede_id=fila.sede.id, seccion='avances') }}" class="boton-admin" style="height:30px; padding:0 8px; font-size:13px;">Avances</a>
+                                        <a href="{{ url_for('superadmin.ver_sede', sede_id=fila.sede.id, seccion='auditoria') }}" class="boton-admin" style="height:30px; padding:0 8px; font-size:13px;">Auditoría</a>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="10" class="vacio">Todavía no hay sedes.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </main>
+
+            <footer class="statusbar">
+                <span>{{ empresa.nombre }}</span>
+                <span>Sesión: {{ session.usuario }}</span>
+            </footer>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/panel.js') }}" defer></script>
+</body>
+
+</html>

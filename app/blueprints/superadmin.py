@@ -1,11 +1,12 @@
+import datetime
+import os
 import sqlite3
 import uuid
-
-import os
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from werkzeug.security import generate_password_hash
 
+from nucleo.auditoria import asegurar
 from nucleo.db import crear_base
 from nucleo.seguridad import requiere_rol
 from nucleo.sedes import RUTA_CENTRAL, conectar, correo_en_uso, listar_sedes, ruta_sede
@@ -36,14 +37,132 @@ TABLAS_RESUMEN = [('Estudiantes', 'estudiantes'), ('Docentes', 'docentes'), ('Cu
                   ('Aspirantes', 'aspirantes'), ('Cuentas de ingreso', 'usuarios')]
 
 
-def _consultar(ruta, sql):
+# Horario de cada materia dictada; un curso sin materias aparece con su propio horario
+SQL_HORARIOS = """
+SELECT * FROM (
+    SELECT g.periodo AS periodo, g.grupo AS curso, '—' AS materia, 'Sin materias' AS docente,
+           j.nombre AS jornada, COALESCE(g.horario, '—') AS horario
+    FROM grupos_curso g
+    JOIN jornadas j ON j.id = g.jornada_id
+    WHERE NOT EXISTS (SELECT 1 FROM cursos c WHERE c.grupo_id = g.id)
+    UNION ALL
+    SELECT c.periodo, COALESCE(g.grupo, c.grupo), m.nombre,
+           COALESCE(d.nombres || ' ' || d.apellidos, 'Sin docente'), j.nombre,
+           COALESCE(c.horario, g.horario, '—')
+    FROM cursos c
+    JOIN materias m ON m.id = c.materia_id
+    JOIN jornadas j ON j.id = c.jornada_id
+    LEFT JOIN grupos_curso g ON g.id = c.grupo_id
+    LEFT JOIN docentes d ON d.id = c.docente_id
+)
+ORDER BY periodo DESC, curso, materia
+"""
+
+# Cada materia dictada (curso) con sus matriculados, cuántos ya tienen nota y el peso de sus criterios
+SQL_AVANCES = """
+SELECT c.id, c.periodo, COALESCE(g.grupo, c.grupo) AS curso, m.nombre AS materia,
+       COALESCE(d.nombres || ' ' || d.apellidos, 'Sin docente') AS docente,
+       (SELECT COUNT(*) FROM matriculas mt WHERE mt.curso_id = c.id) AS matriculados,
+       (SELECT COUNT(*) FROM matriculas mt WHERE mt.curso_id = c.id AND EXISTS (
+            SELECT 1 FROM calificaciones k WHERE k.curso_id = c.id AND k.estudiante_id = mt.estudiante_id)) AS calificados,
+       (SELECT COUNT(*) FROM criterios_evaluacion cr WHERE cr.curso_id = c.id) AS criterios,
+       (SELECT COALESCE(SUM(cr.porcentaje), 0) FROM criterios_evaluacion cr WHERE cr.curso_id = c.id) AS criterios_pct
+FROM cursos c
+JOIN materias m ON m.id = c.materia_id
+LEFT JOIN grupos_curso g ON g.id = c.grupo_id
+LEFT JOIN docentes d ON d.id = c.docente_id
+ORDER BY c.periodo DESC, curso, materia
+"""
+
+
+def _consultar(ruta, sql, parametros=()):
     if not os.path.exists(ruta):
         return []
     conexion = conectar(ruta)
     try:
-        return conexion.execute(sql).fetchall()
+        asegurar(conexion)
+        return conexion.execute(sql, parametros).fetchall()
     finally:
         conexion.close()
+
+
+def _indicadores(ruta):
+    """Cifras de una sede para el monitoreo general."""
+    cifras = {'estudiantes': 0, 'docentes': 0, 'grupos': 0, 'materias': 0, 'matriculas': 0,
+              'calificadas': 0, 'aspirantes': 0, 'ultima': None}
+    if not os.path.exists(ruta):
+        return cifras
+    conexion = conectar(ruta)
+    try:
+        asegurar(conexion)
+
+        def cuenta(sql):
+            return conexion.execute(sql).fetchone()[0]
+
+        cifras.update(
+            estudiantes=cuenta('SELECT COUNT(*) FROM estudiantes'),
+            docentes=cuenta('SELECT COUNT(*) FROM docentes'),
+            grupos=cuenta('SELECT COUNT(*) FROM grupos_curso'),
+            materias=cuenta('SELECT COUNT(*) FROM cursos'),
+            matriculas=cuenta('SELECT COUNT(*) FROM matriculas'),
+            calificadas=cuenta(
+                'SELECT COUNT(*) FROM matriculas m WHERE EXISTS (SELECT 1 FROM calificaciones k '
+                'WHERE k.curso_id = m.curso_id AND k.estudiante_id = m.estudiante_id)'),
+            aspirantes=cuenta('SELECT COUNT(*) FROM aspirantes'),
+            ultima=cuenta('SELECT MAX(fecha) FROM auditoria'),
+        )
+    finally:
+        conexion.close()
+    return cifras
+
+
+def _estado_plazo(plazo, hoy):
+    if plazo is None:
+        return 'Sin plazo'
+    if plazo['abre'] and plazo['abre'] > hoy:
+        return f'Abre el {plazo["abre"]}'
+    if plazo['cierra'] and plazo['cierra'] < hoy:
+        return 'Cerrado'
+    return 'Abierto'
+
+
+def _avances(ruta):
+    if not os.path.exists(ruta):
+        return []
+    hoy = datetime.date.today().isoformat()
+    conexion = conectar(ruta)
+    try:
+        asegurar(conexion)
+        plazos = {fila['periodo']: fila for fila in
+                  conexion.execute('SELECT periodo, abre, cierra FROM plazos_notas').fetchall()}
+        cursos = conexion.execute(SQL_AVANCES).fetchall()
+    finally:
+        conexion.close()
+
+    filas = []
+    for curso in cursos:
+        matriculados, calificados = curso['matriculados'], curso['calificados']
+        porcentaje = round(calificados * 100 / matriculados) if matriculados else 0
+        if not matriculados:
+            estado = 'Sin estudiantes'
+        elif not curso['criterios']:
+            estado = 'Sin criterios'
+        elif calificados == matriculados:
+            estado = 'Notas completas'
+        else:
+            estado = 'En curso'
+        filas.append((curso['periodo'], curso['curso'], curso['materia'], curso['docente'], matriculados,
+                      calificados, f'{porcentaje} %', f'{curso["criterios_pct"]:g} % en {curso["criterios"]} criterio(s)',
+                      _estado_plazo(plazos.get(curso['periodo']), hoy), estado))
+    return filas
+
+
+def _auditoria(ruta, q):
+    patron = f'%{q}%'
+    return _consultar(
+        ruta, "SELECT fecha, usuario, accion, detalle FROM auditoria "
+              "WHERE ? = '' OR usuario LIKE ? OR accion LIKE ? OR detalle LIKE ? "
+              "ORDER BY id DESC LIMIT 500", (q, patron, patron, patron))
 
 
 superadmin_bp = Blueprint('superadmin', __name__, url_prefix='/superadmin')
@@ -65,6 +184,21 @@ def _panel():
 def inicio():
     sedes, admins = _panel()
     return render_template('superadmin/inicio.html', sedes=sedes, admins=admins)
+
+
+@superadmin_bp.route('/monitoreo')
+@requiere_rol('superadmin')
+def monitoreo():
+    """Cifras de todas las sedes en una sola tabla."""
+    filas = []
+    for sede in listar_sedes():
+        cifras = _indicadores(ruta_sede(sede['archivo']))
+        cifras['avance'] = round(cifras['calificadas'] * 100 / cifras['matriculas']) if cifras['matriculas'] else 0
+        filas.append({'sede': sede, 'cifras': cifras})
+    totales = {clave: sum(f['cifras'][clave] for f in filas)
+               for clave in ('estudiantes', 'docentes', 'grupos', 'materias', 'matriculas', 'calificadas', 'aspirantes')}
+    totales['avance'] = round(totales['calificadas'] * 100 / totales['matriculas']) if totales['matriculas'] else 0
+    return render_template('superadmin/monitoreo.html', filas=filas, totales=totales)
 
 
 @superadmin_bp.route('/sedes', methods=['POST'])
@@ -112,12 +246,26 @@ def ver_sede(sede_id):
                    for titulo, tabla in TABLAS_RESUMEN]
         return render_template('superadmin/sede.html', sede=sede, administradores=administradores,
                                seccion=seccion, conteos=conteos, titulo='Resumen', encabezados=[], filas=[])
-    if seccion not in VISTAS_SEDE:
+    q = request.args.get('q', '').strip()
+    if seccion == 'horarios':
+        titulo, encabezados = 'Horarios', ['Periodo', 'Curso', 'Materia', 'Docente', 'Jornada', 'Horario']
+        filas = _consultar(ruta, SQL_HORARIOS)
+    elif seccion == 'avances':
+        titulo = 'Avances de notas'
+        encabezados = ['Periodo', 'Curso', 'Materia', 'Docente', 'Estudiantes', 'Con notas', 'Avance',
+                       'Criterios', 'Plazo de notas', 'Estado']
+        filas = _avances(ruta)
+    elif seccion == 'auditoria':
+        titulo, encabezados = 'Auditoría', ['Fecha', 'Usuario', 'Acción', 'Detalle']
+        filas = _auditoria(ruta, q)
+    elif seccion in VISTAS_SEDE:
+        titulo, encabezados, sql = VISTAS_SEDE[seccion]
+        filas = _consultar(ruta, sql)
+    else:
         abort(404)
-    titulo, encabezados, sql = VISTAS_SEDE[seccion]
-    filas = _consultar(ruta, sql)
     return render_template('superadmin/sede.html', sede=sede, administradores=administradores,
-                           seccion=seccion, conteos=[], titulo=titulo, encabezados=encabezados, filas=filas)
+                           seccion=seccion, conteos=[], titulo=titulo, encabezados=encabezados, filas=filas,
+                           q=q)
 
 
 @superadmin_bp.route('/sedes/<int:sede_id>/editar', methods=['POST'])

@@ -1,0 +1,89 @@
+{% extends 'panel/base_panel.html' %}
+
+{% block title %}Matrícula financiera{% endblock %}
+
+{% block content %}
+
+<h1>Matrícula financiera</h1>
+<p>Suba el recibo de pago en PDF de su mensualidad, trimestre o semestre. La administración lo revisará y verá aquí el resultado.</p>
+
+<form method="post" action="{{ url_for('dashboard.matricula_financiera') }}" enctype="multipart/form-data" class="bloque-admin bloque-formulario">
+    <section>
+        <h2>Cargar recibo de pago</h2>
+        <div class="formulario-admin">
+            <label class="form-field">
+                <span>Modalidad de pago <small>*</small></span>
+                <select name="modalidad" required>
+                    <option value="">— Seleccione —</option>
+                    {% for clave, texto in modalidades.items() %}
+                    <option value="{{ clave }}">{{ texto }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="form-field">
+                <span>Periodo <small>*</small></span>
+                <input type="text" name="periodo" placeholder="Por ejemplo 2026-1" maxlength="10" required>
+            </label>
+            <label class="form-field">
+                <span>Fecha de pago <small>*</small></span>
+                <input type="date" name="fecha_pago" max="{{ hoy }}" required>
+            </label>
+            <label class="form-field">
+                <span>Recibo (PDF, JPG o PNG; máximo 5 MB) <small>*</small></span>
+                <input type="file" name="recibo" accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg" required>
+            </label>
+        </div>
+        <p class="ayuda" style="margin:12px 0 0;">Si carga otro recibo para la misma modalidad y periodo, reemplaza al anterior.</p>
+    </section>
+
+    <div class="acciones-form" style="padding:18px 22px;">
+        <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-upload"></i> Cargar recibo</button>
+    </div>
+</form>
+
+<section class="bloque-admin" style="margin-top:18px;">
+    <h2>Mis recibos <span class="contador">({{ recibos|length }})</span></h2>
+    {% if recibos %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Periodo</th>
+                    <th scope="col">Modalidad</th>
+                    <th scope="col">Fecha de pago</th>
+                    <th scope="col">Archivo</th>
+                    <th scope="col">Cargado</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Recibo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for recibo in recibos %}
+                <tr>
+                    <td>{{ recibo.periodo }}</td>
+                    <td>{{ modalidades[recibo.modalidad] }}</td>
+                    <td>{{ recibo.fecha_pago }}</td>
+                    <td>{{ recibo.nombre_original }}</td>
+                    <td>{{ recibo.subido_en }}</td>
+                    <td>
+                        {% if recibo.estado == 'aprobado' %}
+                        <span class="nota-resumen" style="background:var(--ok-bg); color:var(--ok);">{{ estados[recibo.estado] }}</span>
+                        {% elif recibo.estado == 'rechazado' %}
+                        <span class="nota-resumen" style="background:#fee2e2; color:#b91c1c;">{{ estados[recibo.estado] }}</span>
+                        {% if recibo.observacion %}<div class="ayuda" style="margin-top:4px;">{{ recibo.observacion }}</div>{% endif %}
+                        {% else %}
+                        <span class="nota-resumen" style="background:var(--alerta-bg); color:var(--alerta);">{{ estados[recibo.estado] }}</span>
+                        {% endif %}
+                    </td>
+                    <td><a href="{{ url_for('dashboard.descargar_recibo', recibo_id=recibo.id) }}"><i class="fa-solid fa-file"></i> Ver recibo</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">Todavía no ha cargado ningún recibo.</p>
+    {% endif %}
+</section>
+
+{% endblock %}

@@ -8,7 +8,9 @@ from werkzeug.security import generate_password_hash
 
 from nucleo.db import get_db
 from servicios import estudiantes_csv, notas
+from servicios import matricula_financiera as mf
 from nucleo.sedes import correo_en_uso
+from nucleo.auditoria import registrar
 from servicios.documentos import DOCS_DIR
 from servicios.comprobante import generar_comprobante
 from servicios import documentos_docente as docs_docente
@@ -425,6 +427,7 @@ def entidad(entidad):
             if entidad == 'docentes':
                 db.execute("INSERT INTO usuarios (correo, contrasena_hash, rol, docente_id) VALUES (?, ?, 'docente', ?)",
                            (valores['correo'], generate_password_hash(clave), cursor.lastrowid))
+            registrar(db, 'crear', f'{config["singular"]} id {cursor.lastrowid}')
             db.commit()
             flash('Docente creado. Ya puede ingresar con su correo y la clave temporal.' if entidad == 'docentes'
                   else 'Registro guardado correctamente.', 'ok')
@@ -515,6 +518,7 @@ def nuevo_curso():
         cursor = db.execute(
             'INSERT INTO grupos_curso (ciclo, grupo, periodo, jornada_id, horario, cupo) VALUES (?, ?, ?, ?, ?, ?)',
             (int(ciclo), grupo, periodo, int(jornada_id), horario, int(cupo)))
+        registrar(db, 'crear', f'Curso {grupo} del periodo {periodo}')
         db.commit()
         flash(f'Curso {grupo} creado para el periodo {periodo}. Ahora agregue sus materias.', 'ok')
         return redirect(url_for('admin.curso_grupo', grupo_id=cursor.lastrowid))
@@ -614,6 +618,7 @@ def agregar_materias(grupo_id):
             '            JOIN cursos cg ON cg.id = mt.curso_id WHERE cg.grupo_id = ?) e '
             'WHERE c.grupo_id = ?',
             (grupo_id, grupo_id))
+        registrar(db, 'agregar_materias', f'{len(asignaciones)} materia(s) en el curso id {grupo_id}')
         db.commit()
         flash(f'Se agregaron {len(asignaciones)} materia(s) al curso {grupo["grupo"]}.', 'ok')
     except ValueError as error:
@@ -636,6 +641,7 @@ def eliminar_grupo(grupo_id):
         flash('Este curso tiene materias. Elimínelas primero.', 'error')
         return redirect(url_for('admin.curso_grupo', grupo_id=grupo_id))
     db.execute('DELETE FROM grupos_curso WHERE id = ?', (grupo_id,))
+    registrar(db, 'eliminar', f'Curso id {grupo_id}')
     db.commit()
     flash('Curso eliminado.', 'ok')
     return redirect(url_for('admin.vista_ciclo', ciclo=grupo['ciclo'] if grupo['ciclo'] else 'sin'))
@@ -662,6 +668,7 @@ def agregar_estudiantes(grupo_id):
             for curso_id in cursos_ids:
                 db.execute('INSERT OR IGNORE INTO matriculas (curso_id, estudiante_id) VALUES (?, ?)',
                            (curso_id, int(estudiante_id)))
+        registrar(db, 'matricular', f'{len(ids)} estudiante(s) en el curso id {grupo_id}')
         db.commit()
         flash(f'Se matricularon {len(ids)} estudiante(s) en las {len(cursos_ids)} materia(s) del curso.', 'ok')
     except sqlite3.IntegrityError:
@@ -686,6 +693,7 @@ def quitar_estudiante(grupo_id, estudiante_id):
     else:
         db.execute('DELETE FROM matriculas WHERE estudiante_id = ? '
                    'AND curso_id IN (SELECT id FROM cursos WHERE grupo_id = ?)', (estudiante_id, grupo_id))
+        registrar(db, 'quitar_estudiante', f'estudiante id {estudiante_id} del curso id {grupo_id}')
         db.commit()
         flash('Estudiante quitado del curso.', 'ok')
     return redirect(url_for('admin.curso_grupo', grupo_id=grupo_id))
@@ -717,6 +725,9 @@ def importar_estudiantes():
         return redirect(url_for('admin.entidad', entidad='estudiantes'))
     ok, mensajes, creados, actualizados = estudiantes_csv.importar(get_db(), archivo.read())
     if ok:
+        db = get_db()
+        registrar(db, 'importar', f'{creados} nuevo(s) y {actualizados} actualizado(s) desde CSV')
+        db.commit()
         flash(f'Importación lista: {creados} estudiante(s) nuevo(s) y {actualizados} actualizado(s).', 'ok')
     else:
         for mensaje in mensajes:
@@ -760,6 +771,7 @@ def habilitar_acceso_estudiante(estudiante_id):
         db.execute("INSERT INTO usuarios (correo, contrasena_hash, rol, estudiante_id) VALUES (?, ?, 'estudiante', ?)",
                    (correo, hash_clave, estudiante_id))
         db.execute('UPDATE estudiantes SET correo = ? WHERE id = ?', (correo, estudiante_id))
+        registrar(db, 'acceso_habilitado', f'estudiante id {estudiante_id} con correo {correo}')
         db.commit()
         flash('Acceso habilitado. El estudiante ya puede entrar a la plataforma y ver sus notas.', 'ok')
     return redirect(url_for('admin.entidad', entidad='estudiantes'))
@@ -771,6 +783,7 @@ def deshabilitar_acceso_estudiante(estudiante_id):
     """Quita la cuenta de ingreso. Los datos y las notas del estudiante se conservan."""
     db = get_db()
     db.execute("DELETE FROM usuarios WHERE estudiante_id = ? AND rol = 'estudiante'", (estudiante_id,))
+    registrar(db, 'acceso_deshabilitado', f'estudiante id {estudiante_id}')
     db.commit()
     flash('Acceso deshabilitado. El estudiante ya no puede entrar a la plataforma.', 'ok')
     return redirect(url_for('admin.entidad', entidad='estudiantes'))
@@ -793,6 +806,7 @@ def guardar_plazo_notas():
         db.execute('INSERT INTO plazos_notas (periodo, abre, cierra) VALUES (?, ?, ?) '
                    'ON CONFLICT (periodo) DO UPDATE SET cierra = excluded.cierra, abre = excluded.abre',
                    (periodo, abre_valor, ayer))
+        registrar(db, 'plazo_cerrado', f'periodo {periodo}')
         db.commit()
         flash(f'Plazo cerrado para el periodo {periodo}. Los docentes ya no pueden cambiar sus notas.', 'ok')
         return redirect(url_for('admin.entidad', entidad='calificaciones'))
@@ -812,6 +826,7 @@ def guardar_plazo_notas():
     db.execute('INSERT INTO plazos_notas (periodo, abre, cierra) VALUES (?, ?, ?) '
                'ON CONFLICT (periodo) DO UPDATE SET abre = excluded.abre, cierra = excluded.cierra',
                (periodo, abre, cierra))
+    registrar(db, 'plazo_guardado', f'periodo {periodo}: abre {abre or "sin fecha"}, cierra {cierra or "sin fecha"}')
     db.commit()
     flash(f'Plazo guardado para el periodo {periodo}.', 'ok')
     return redirect(url_for('admin.entidad', entidad='calificaciones'))
@@ -952,6 +967,7 @@ def editar(entidad, registro_id):
                        [*valores.values(), registro_id])
             if entidad == 'docentes':
                 db.execute('UPDATE usuarios SET correo = ? WHERE docente_id = ?', (valores['correo'], registro_id))
+            registrar(db, 'editar', f'{config["singular"]} id {registro_id}')
             db.commit()
             if entidad == 'docentes':
                 _actualizar_extras_docente(registro_id, materias)
@@ -996,6 +1012,7 @@ def eliminar(entidad, registro_id):
         if entidad == 'matriculas':
             db.execute(SQL_LIMPIAR_CALIFICACION, (registro_id, registro_id))
         db.execute(f'DELETE FROM {config["tabla"]} WHERE id = ?', (registro_id,))
+        registrar(db, 'eliminar', f'{config["singular"]} id {registro_id}')
         db.commit()
         flash('Registro eliminado.', 'ok')
     except sqlite3.IntegrityError:
@@ -1027,6 +1044,7 @@ def accesos():
                 db.execute(
                     f'INSERT INTO usuarios (correo, contrasena_hash, rol, {columna}) VALUES (?, ?, ?, ?)',
                     (correo, generate_password_hash(contrasena), rol, int(persona_id)))
+                registrar(db, 'acceso_creado', f'{rol} {correo}')
                 db.commit()
                 flash('Acceso creado correctamente.', 'ok')
             except sqlite3.IntegrityError:
@@ -1067,6 +1085,7 @@ def restablecer_contrasena(cuenta_id):
         abort(404)
     db.execute('UPDATE usuarios SET contrasena_hash = ? WHERE id = ?',
                (generate_password_hash(nueva), cuenta_id))
+    registrar(db, 'contrasena_restablecida', cuenta['correo'])
     db.commit()
     flash(f'Contraseña restablecida para {cuenta["correo"]}.', 'ok')
     return redirect(url_for('admin.accesos'))
@@ -1077,6 +1096,7 @@ def restablecer_contrasena(cuenta_id):
 def eliminar_acceso(cuenta_id):
     db = get_db()
     db.execute('DELETE FROM usuarios WHERE id = ?', (cuenta_id,))
+    registrar(db, 'acceso_eliminado', f'cuenta id {cuenta_id}')
     db.commit()
     flash('Acceso eliminado.', 'ok')
     return redirect(url_for('admin.accesos'))
@@ -1122,6 +1142,8 @@ def revisar_documento(aspirante_id, documento_id):
         cursor = db.execute(
             'UPDATE documentos_aspirante SET estado = ?, observacion = ? WHERE id = ? AND aspirante_id = ?',
             (estado, observacion if estado == 'rechazado' else None, documento_id, aspirante_id))
+        if cursor.rowcount:
+            registrar(db, 'revision_documento', f'documento id {documento_id} del aspirante id {aspirante_id}: {estado}')
         db.commit()
         if cursor.rowcount:
             flash('Revisión guardada.', 'ok')
@@ -1140,6 +1162,36 @@ def descargar_documento(documento_id):
         abort(404)
     return send_from_directory(DOCS_DIR, doc['nombre_archivo'], as_attachment=True,
                                download_name=doc['nombre_original'])
+
+
+@admin_bp.route('/pagos-matricula')
+@requiere_admin
+def pagos_matricula():
+    busqueda = request.args.get('q', '').strip()[:100]
+    return render_template('admin/pagos_matricula.html', registros=mf.estudiantes_con_matricula(busqueda),
+                           q=busqueda, modalidades=mf.MODALIDADES)
+
+
+@admin_bp.route('/pagos-matricula/<int:recibo_id>/descargar')
+@requiere_admin
+def descargar_recibo_matricula(recibo_id):
+    db = get_db()
+    mf.asegurar(db)
+    recibo = db.execute('SELECT nombre_original, nombre_archivo FROM recibos_matricula WHERE id = ?',
+                        (recibo_id,)).fetchone()
+    if recibo is None:
+        abort(404)
+    return send_from_directory(mf.RECIBOS_DIR, recibo['nombre_archivo'], as_attachment=True,
+                               download_name=recibo['nombre_original'])
+
+
+@admin_bp.route('/pagos-matricula/<int:recibo_id>/revisar', methods=['POST'])
+@requiere_admin
+def revisar_recibo_matricula(recibo_id):
+    observacion = request.form.get('observacion', '').strip()[:500] or None
+    ok, mensaje = mf.revisar_recibo(recibo_id, request.form.get('estado', ''), observacion)
+    flash(mensaje, 'ok' if ok else 'error')
+    return redirect(url_for('admin.pagos_matricula'))
 
 
 @admin_bp.route('/aspirantes/<int:aspirante_id>/formulario')
@@ -1206,6 +1258,7 @@ def habilitar_aspirante(aspirante_id):
                    (aspirante['correo'], aspirante['contrasena_hash'], 'estudiante', estudiante_id))
         db.execute("UPDATE aspirantes SET estado = 'habilitado', estudiante_id = ? WHERE id = ?",
                    (estudiante_id, aspirante_id))
+        registrar(db, 'aspirante_habilitado', f'aspirante id {aspirante_id} como estudiante id {estudiante_id}')
         db.commit()
     except sqlite3.IntegrityError:
         db.rollback()
@@ -1226,6 +1279,7 @@ def deshabilitar_aspirante(aspirante_id):
     # Quita la cuenta de estudiante y bloquea también el acceso como aspirante
     db.execute("DELETE FROM usuarios WHERE correo = ? AND rol = 'estudiante'", (aspirante['correo'],))
     db.execute("UPDATE aspirantes SET estado = 'deshabilitado' WHERE id = ?", (aspirante_id,))
+    registrar(db, 'aspirante_deshabilitado', f'aspirante id {aspirante_id}')
     db.commit()
     flash('Acceso deshabilitado. El aspirante ya no puede entrar a la plataforma.', 'ok')
     return redirect(url_for('admin.entidad', entidad='aspirantes'))

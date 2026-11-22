@@ -1,6 +1,10 @@
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+import datetime
+
+from flask import (Blueprint, abort, flash, redirect, render_template, request, send_from_directory,
+                   session, url_for)
 
 from nucleo.db import get_db
+from servicios import matricula_financiera as mf
 from servicios.geografia import DEPARTAMENTOS
 from nucleo.seguridad import requiere_rol
 
@@ -28,6 +32,7 @@ MENU_GRUPOS = [
     {'titulo': 'Trámites', 'enlaces': [
         {'texto': 'Autorizaciones', 'url': '#'},
         {'texto': 'Acuerdos de pago', 'url': '#'},
+        {'texto': 'Matrícula financiera', 'url': '/panel/matricula'},
         {'texto': 'Recibos', 'url': '#'},
         {'texto': 'Constancias en línea', 'url': '#'},
     ]},
@@ -154,3 +159,30 @@ def datos():
     return render_template('panel/datos.html', estudiante=estudiante, usuario=estudiante,
                            grupos=MENU_GRUPOS, departamentos=DEPARTAMENTOS,
                            obligatorios=OBLIGATORIOS_DATOS_ESTUDIANTE)
+
+
+@dashboard_bp.route('/matricula', methods=['GET', 'POST'])
+@requiere_rol('estudiante')
+def matricula_financiera():
+    estudiante_id = session['persona_id']
+    if request.method == 'POST':
+        ok, mensaje = mf.guardar_recibo(
+            estudiante_id, request.form.get('modalidad', ''), request.form.get('periodo', '').strip(),
+            request.form.get('fecha_pago', ''), request.files.get('recibo'))
+        flash(mensaje, 'ok' if ok else 'error')
+        return redirect(url_for('dashboard.matricula_financiera'))
+
+    return render_template('panel/matricula.html', usuario=_datos_estudiante(estudiante_id),
+                           recibos=mf.recibos_del_estudiante(estudiante_id), modalidades=mf.MODALIDADES,
+                           estados=mf.ESTADOS, grupos=MENU_GRUPOS, hoy=datetime.date.today().isoformat())
+
+
+@dashboard_bp.route('/matricula/<int:recibo_id>/descargar')
+@requiere_rol('estudiante')
+def descargar_recibo(recibo_id):
+    # Solo el propio estudiante puede abrir su recibo
+    recibo = mf.recibo_del_estudiante(recibo_id, session['persona_id'])
+    if recibo is None:
+        abort(404)
+    return send_from_directory(mf.RECIBOS_DIR, recibo['nombre_archivo'], as_attachment=True,
+                               download_name=recibo['nombre_original'])

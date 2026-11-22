@@ -1,0 +1,83 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block title %}Matrícula financiera{% endblock %}
+
+{% block content %}
+
+<h1>Matrícula financiera</h1>
+<p>Estudiantes con su recibo de matrícula financiera. Revise cada recibo y apruebe o rechace el pago. Si lo rechaza, el estudiante verá el motivo.</p>
+
+<form method="get" action="{{ url_for('admin.pagos_matricula') }}" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+    <input type="search" name="q" value="{{ q }}" placeholder="Buscar por nombre, apellido, documento o código" style="max-width:420px;">
+    <button type="submit" class="boton-admin">Buscar</button>
+</form>
+
+<section class="bloque-admin">
+    <h2>Estudiantes <span class="contador">({{ registros|length }})</span></h2>
+    {% if registros %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Nombres</th>
+                    <th scope="col">Apellidos</th>
+                    <th scope="col">Documento</th>
+                    <th scope="col">Periodo</th>
+                    <th scope="col">Modalidad</th>
+                    <th scope="col">Estado de la matrícula</th>
+                    <th scope="col">Fecha de pago</th>
+                    <th scope="col">Recibo</th>
+                    <th scope="col">Revisión</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fila in registros %}
+                <tr>
+                    <td>{{ fila.nombres }}</td>
+                    <td>{{ fila.apellidos }}</td>
+                    <td>{{ fila.documento }}<br><span class="ayuda">{{ fila.codigo }}</span></td>
+                    {% if fila.recibo_id is none %}
+                    <td>—</td>
+                    <td>—</td>
+                    <td><span class="nota-resumen" style="background:#e2e8f0; color:#475569;">Sin recibo</span></td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td>—</td>
+                    {% else %}
+                    <td>{{ fila.periodo }}</td>
+                    <td>{{ modalidades[fila.modalidad] }}</td>
+                    <td>
+                        {% if fila.estado == 'aprobado' %}
+                        <span class="nota-resumen" style="background:var(--ok-bg); color:var(--ok);">Pagada</span>
+                        {% elif fila.estado == 'rechazado' %}
+                        <span class="nota-resumen" style="background:#fee2e2; color:#b91c1c;">Rechazada</span>
+                        {% if fila.observacion %}<div class="ayuda">{{ fila.observacion }}</div>{% endif %}
+                        {% else %}
+                        <span class="nota-resumen" style="background:var(--alerta-bg); color:var(--alerta);">Por revisar</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ fila.fecha_pago }}</td>
+                    <td><a href="{{ url_for('admin.descargar_recibo_matricula', recibo_id=fila.recibo_id) }}"><i class="fa-solid fa-file"></i> Ver recibo</a></td>
+                    <td>
+                        <form method="post" action="{{ url_for('admin.revisar_recibo_matricula', recibo_id=fila.recibo_id) }}" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                            <select name="estado" required>
+                                <option value="">— Decida —</option>
+                                <option value="aprobado">Aprobar</option>
+                                <option value="rechazado">Rechazar</option>
+                            </select>
+                            <input type="text" name="observacion" placeholder="Motivo si rechaza" maxlength="500" style="min-width:180px;">
+                            <button type="submit" class="boton-admin">Guardar</button>
+                        </form>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">No hay estudiantes que coincidan con la búsqueda.</p>
+    {% endif %}
+</section>
+
+{% endblock %}
