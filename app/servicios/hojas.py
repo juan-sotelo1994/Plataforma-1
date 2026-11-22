@@ -46,7 +46,7 @@ def guardar_hoja(docente_id, archivo):
         'SELECT nombre_archivo FROM hojas_de_vida WHERE docente_id = ?', (docente_id,)).fetchone()
     db.execute(
         "INSERT INTO hojas_de_vida (docente_id, nombre_original, nombre_archivo, subido_en) "
-        "VALUES (?, ?, ?, datetime('now', 'localtime')) "
+        "VALUES (?, ?, ?, to_char(localtimestamp, 'YYYY-MM-DD HH24:MI:SS')) "
         "ON CONFLICT (docente_id) DO UPDATE SET nombre_original = excluded.nombre_original, "
         "nombre_archivo = excluded.nombre_archivo, subido_en = excluded.subido_en",
         (docente_id, nombre, nombre_en_disco))

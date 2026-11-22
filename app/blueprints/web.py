@@ -1,12 +1,12 @@
 import secrets
-import sqlite3
+
 import uuid
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import generate_password_hash
 
 from servicios.circulares_data import por_sede
-from nucleo.db import get_db
+from nucleo.db import IntegrityError, get_db
 from nucleo.sedes import correo_en_uso, listar_sedes
 
 
@@ -103,7 +103,7 @@ def inscripcion():
             db.commit()
             # La contraseña se crea en la siguiente pantalla; hasta entonces la cuenta no puede entrar
             session['inscripcion_id'] = cursor.lastrowid
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             flash('Ya existe una inscripción con ese documento o correo.', 'error')
         else:
             return redirect(url_for('web.inscripcion_contrasena'))

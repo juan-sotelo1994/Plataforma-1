@@ -1,10 +1,10 @@
 import datetime
 import io
-import sqlite3
+
 
 from flask import Blueprint, flash, redirect, render_template, request, send_file, session, url_for
 
-from nucleo.db import get_db
+from nucleo.db import IntegrityError, get_db
 from nucleo.seguridad import requiere_rol
 from servicios.comprobante import generar_comprobante
 from servicios.documentos import guardar_documento
@@ -298,7 +298,7 @@ def _guardar_datos(paso):
                 'INSERT INTO hermanos (aspirante_id, nombre, edad, parentesco, orden) VALUES (?, ?, ?, ?, ?)',
                 [(aspirante_id, nombre, edad, parentesco, orden) for nombre, edad, parentesco, orden in hermanos])
         db.commit()
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         flash('Ese número de documento ya está registrado en otra inscripción. Los datos no se guardaron.', 'error')
         return redirect(url_for('aspirante.inicio', paso=paso))
 

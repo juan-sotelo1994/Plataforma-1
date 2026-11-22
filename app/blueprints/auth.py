@@ -5,7 +5,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from nucleo.auditoria import registrar
-from nucleo.sedes import RUTA_CENTRAL, conectar, listar_sedes, ruta_sede
+from nucleo.sedes import conectar_central, conectar_sede, listar_sedes
 from nucleo.seguridad import INICIO_POR_ROL, destino_por_rol, requiere_rol
 
 
@@ -29,9 +29,9 @@ def _cuenta_administrador(correo, contrasena):
     return hmac.compare_digest(contrasena.encode(), clave_ok.encode())
 
 
-def _autenticar_en_sede(ruta, correo, contrasena):
+def _autenticar_en_sede(esquema, correo, contrasena):
     """Busca al usuario en la base de una sede. Devuelve (rol, id_de_la_persona) o (None, None)."""
-    conexion = conectar(ruta)
+    conexion = conectar_sede(esquema)
     try:
         fila = conexion.execute(
             'SELECT rol, docente_id, estudiante_id, personal_id, contrasena_hash FROM usuarios WHERE correo = ?',
@@ -59,7 +59,7 @@ def _autenticar(correo, contrasena):
     if _cuenta_administrador(correo, contrasena):
         return 'superadmin', None, None
 
-    central = conectar(RUTA_CENTRAL)
+    central = conectar_central()
     try:
         admin = central.execute(
             'SELECT a.contrasena_hash, s.archivo, s.nombre FROM admins_sede a '
@@ -71,17 +71,14 @@ def _autenticar(correo, contrasena):
 
     # El correo identifica la sede: se busca en cada base hasta encontrarlo
     for sede in listar_sedes():
-        ruta = ruta_sede(sede['archivo'])
-        if not os.path.exists(ruta):
-            continue
-        rol, persona_id = _autenticar_en_sede(ruta, correo, contrasena)
+        rol, persona_id = _autenticar_en_sede(sede['archivo'], correo, contrasena)
         if rol:
             return rol, persona_id, (sede['archivo'], sede['nombre'])
     return None, None, None
 
 
 def _registrar_ingreso(archivo, correo):
-    conexion = conectar(ruta_sede(archivo))
+    conexion = conectar_sede(archivo)
     try:
         registrar(conexion, 'ingreso', 'Inició sesión', usuario=correo)
         conexion.commit()
@@ -135,7 +132,7 @@ ETIQUETAS_ROL = {'superadmin': 'Superadministrador', 'admin': 'Administrador de 
 
 
 def _hash_superadmin():
-    central = conectar(RUTA_CENTRAL)
+    central = conectar_central()
     try:
         fila = central.execute('SELECT contrasena_hash FROM credencial_superadmin WHERE id = 1').fetchone()
     finally:
@@ -148,13 +145,13 @@ def _hash_vigente(rol, correo):
     if rol == 'superadmin':
         return _hash_superadmin()
     if rol == 'admin':
-        central = conectar(RUTA_CENTRAL)
+        central = conectar_central()
         try:
             fila = central.execute('SELECT contrasena_hash FROM admins_sede WHERE correo = ?', (correo,)).fetchone()
         finally:
             central.close()
         return fila['contrasena_hash'] if fila else None
-    conexion = conectar(ruta_sede(session['sede_archivo']))
+    conexion = conectar_sede(session['sede_archivo'])
     try:
         fila = conexion.execute(
             'SELECT contrasena_hash FROM usuarios WHERE correo = ? '
@@ -167,7 +164,7 @@ def _hash_vigente(rol, correo):
 
 def _guardar_contrasena(rol, correo, hash_nuevo):
     if rol == 'superadmin':
-        central = conectar(RUTA_CENTRAL)
+        central = conectar_central()
         try:
             central.execute(
                 'INSERT INTO credencial_superadmin (id, contrasena_hash) VALUES (1, ?) '
@@ -176,7 +173,7 @@ def _guardar_contrasena(rol, correo, hash_nuevo):
         finally:
             central.close()
     elif rol == 'admin':
-        central = conectar(RUTA_CENTRAL)
+        central = conectar_central()
         try:
             central.execute('UPDATE admins_sede SET contrasena_hash = ? WHERE correo = ?', (hash_nuevo, correo))
             central.commit()
@@ -184,7 +181,7 @@ def _guardar_contrasena(rol, correo, hash_nuevo):
             central.close()
     else:
         # La misma contraseña queda en la cuenta de ingreso y en la ficha de aspirante, si la hay
-        conexion = conectar(ruta_sede(session['sede_archivo']))
+        conexion = conectar_sede(session['sede_archivo'])
         try:
             conexion.execute('UPDATE usuarios SET contrasena_hash = ? WHERE correo = ?', (hash_nuevo, correo))
             conexion.execute('UPDATE aspirantes SET contrasena_hash = ? WHERE correo = ?', (hash_nuevo, correo))

@@ -1,12 +1,12 @@
 import datetime
 import uuid
 import io
-import sqlite3
+
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, send_from_directory, url_for
 from werkzeug.security import generate_password_hash
 
-from nucleo.db import get_db
+from nucleo.db import IntegrityError, get_db
 from servicios import estudiantes_csv, notas
 from servicios import matricula_financiera as mf
 from nucleo.sedes import correo_en_uso
@@ -61,7 +61,7 @@ ENTIDADES = {
         'singular': 'docente',
         'tabla': 'docentes',
         'consulta': ("SELECT d.id, d.nombres, d.apellidos, d.documento, d.correo, d.especialidad, "
-                     "(SELECT GROUP_CONCAT(m.nombre, ', ') FROM docente_materias dm "
+                     "(SELECT string_agg(m.nombre, ', ') FROM docente_materias dm "
                      " JOIN materias m ON m.id = dm.materia_id WHERE dm.docente_id = d.id) AS materias, "
                      "(SELECT h.nombre_original FROM hojas_de_vida h WHERE h.docente_id = d.id) AS hoja "
                      "FROM docentes d ORDER BY d.apellidos, d.nombres"),
@@ -125,7 +125,7 @@ ENTIDADES = {
                      "THEN 'Habilitado' ELSE 'Sin acceso' END AS acceso, "
                      "EXISTS (SELECT 1 FROM aspirantes a WHERE a.estudiante_id = e.id OR a.documento = e.documento) AS inscrito, "
                      "e.jornada_id AS jornada_id, "
-                     "(SELECT GROUP_CONCAT(DISTINCT c.grupo_id) FROM matriculas mt JOIN cursos c ON c.id = mt.curso_id "
+                     "(SELECT string_agg(DISTINCT c.grupo_id::text, ',') FROM matriculas mt JOIN cursos c ON c.id = mt.curso_id "
                      "WHERE mt.estudiante_id = e.id) AS cursos_ids "
                      "FROM estudiantes e LEFT JOIN jornadas j ON j.id = e.jornada_id "
                      "ORDER BY e.apellidos, e.nombres"),
@@ -139,7 +139,7 @@ ENTIDADES = {
             {'nombre': 'correo', 'etiqueta': 'Correo', 'tipo': 'email'},
             {'nombre': 'programa', 'etiqueta': 'Programa', 'tipo': 'select', 'solo_texto': True,
              'opciones_sql': ("SELECT g.grupo || ' · ' || g.periodo AS id, "
-                              "'Ciclo ' || COALESCE(g.ciclo, '-') || ' · ' || g.grupo || ' · ' || g.periodo AS texto "
+                              "'Ciclo ' || COALESCE(CAST(g.ciclo AS TEXT), '-') || ' · ' || g.grupo || ' · ' || g.periodo AS texto "
                               "FROM grupos_curso g ORDER BY g.periodo DESC, g.ciclo, g.grupo"),
              'ayuda': 'Curso al que pertenece el estudiante.'},
             {'nombre': 'jornada_id', 'etiqueta': 'Jornada', 'tipo': 'select',
@@ -283,7 +283,7 @@ FROM calificaciones k
 JOIN cursos c ON c.id = k.curso_id
 JOIN materias m ON m.id = c.materia_id
 LEFT JOIN docentes d ON d.id = c.docente_id
-GROUP BY c.id
+GROUP BY c.id, m.nombre, c.grupo, c.periodo, d.nombres, d.apellidos
 ORDER BY promedio DESC, m.nombre
 """
 
@@ -438,7 +438,7 @@ def entidad(entidad):
                   else 'Registro guardado correctamente.', 'ok')
         except ValueError as error:
             flash(str(error), 'error')
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             flash('No se pudo guardar. Revise que el código, el documento o el grupo no estén '
                   'repetidos y que las relaciones seleccionadas existan.', 'error')
         return redirect(url_for('admin.entidad', entidad=entidad))
@@ -532,7 +532,7 @@ def nuevo_curso():
     except ValueError as error:
         db.rollback()
         flash(str(error), 'error')
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         db.rollback()
         flash(f'Ya existe el curso {ciclo}{letra} en el periodo {periodo}. Use otra letra de grupo.', 'error')
     destino = url_for('admin.vista_ciclo', ciclo=ciclo) if ciclo in CICLOS_PLAN else url_for('admin.entidad', entidad='cursos')
@@ -631,7 +631,7 @@ def agregar_materias(grupo_id):
     except ValueError as error:
         db.rollback()
         flash(str(error), 'error')
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         db.rollback()
         flash('Alguna de esas materias ya está en este curso.', 'error')
     return redirect(url_for('admin.curso_grupo', grupo_id=grupo_id))
@@ -678,7 +678,7 @@ def agregar_estudiantes(grupo_id):
         registrar(db, 'matricular', f'{len(ids)} estudiante(s) en el curso id {grupo_id}')
         db.commit()
         flash(f'Se matricularon {len(ids)} estudiante(s) en las {len(cursos_ids)} materia(s) del curso.', 'ok')
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         db.rollback()
         flash('No se pudo matricular: alguno de los estudiantes ya no existe.', 'error')
     return redirect(url_for('admin.curso_grupo', grupo_id=grupo_id))
@@ -982,7 +982,7 @@ def editar(entidad, registro_id):
             return redirect(url_for('admin.entidad', entidad=entidad))
         except ValueError as error:
             flash(str(error), 'error')
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             flash('No se pudo guardar. Revise que el código, el documento o el grupo no estén repetidos.', 'error')
         return redirect(url_for('admin.editar', entidad=entidad, registro_id=registro_id))
 
@@ -1023,7 +1023,7 @@ def eliminar(entidad, registro_id):
         registrar(db, 'eliminar', f'{config["singular"]} id {registro_id}')
         db.commit()
         flash('Registro eliminado.', 'ok')
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         flash(f'No se puede eliminar este registro porque tiene datos asociados '
               '(por ejemplo, cursos o estudiantes que dependen de él).', 'error')
     return redirect(url_for('admin.entidad', entidad=entidad))
@@ -1055,7 +1055,7 @@ def accesos():
                 registrar(db, 'acceso_creado', f'{rol} {correo}')
                 db.commit()
                 flash('Acceso creado correctamente.', 'ok')
-            except sqlite3.IntegrityError:
+            except IntegrityError:
                 flash('Ese correo ya tiene un acceso, o la persona no existe.', 'error')
         return redirect(url_for('admin.accesos'))
 
@@ -1275,7 +1275,7 @@ def habilitar_aspirante(aspirante_id):
                    (estudiante_id, aspirante_id))
         registrar(db, 'aspirante_habilitado', f'aspirante id {aspirante_id} como estudiante id {estudiante_id}')
         db.commit()
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         db.rollback()
         flash('No se pudo habilitar el acceso. Revise que el correo y el documento no estén repetidos.', 'error')
         return redirect(url_for('admin.documentos_aspirante', aspirante_id=aspirante_id))

@@ -65,7 +65,7 @@ def guardar_documento(aspirante_id, requisito_id, archivo):
     # Al subir de nuevo, el documento vuelve a quedar pendiente de revisión
     db.execute(
         "INSERT INTO documentos_aspirante (aspirante_id, requisito_id, nombre_original, nombre_archivo, subido_en) "
-        "VALUES (?, ?, ?, ?, datetime('now', 'localtime')) "
+        "VALUES (?, ?, ?, ?, to_char(localtimestamp, 'YYYY-MM-DD HH24:MI:SS')) "
         "ON CONFLICT (aspirante_id, requisito_id) DO UPDATE SET "
         "nombre_original = excluded.nombre_original, nombre_archivo = excluded.nombre_archivo, "
         "subido_en = excluded.subido_en, estado = 'pendiente', observacion = NULL",

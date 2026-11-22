@@ -64,7 +64,7 @@ def guardar(docente_id, tipo, archivo):
                           (docente_id, tipo)).fetchone()
     db.execute(
         "INSERT INTO docentes_documentos (docente_id, tipo, nombre_original, nombre_archivo, subido_en) "
-        "VALUES (?, ?, ?, ?, datetime('now', 'localtime')) "
+        "VALUES (?, ?, ?, ?, to_char(localtimestamp, 'YYYY-MM-DD HH24:MI:SS')) "
         "ON CONFLICT (docente_id, tipo) DO UPDATE SET nombre_original = excluded.nombre_original, "
         "nombre_archivo = excluded.nombre_archivo, subido_en = excluded.subido_en",
         (docente_id, tipo, nombre, nombre_en_disco))

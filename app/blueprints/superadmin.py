@@ -1,15 +1,15 @@
 import datetime
 import os
-import sqlite3
+
 import uuid
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from werkzeug.security import generate_password_hash
 
 from nucleo.auditoria import asegurar
-from nucleo.db import crear_base
+from nucleo.db import IntegrityError, crear_base
 from nucleo.seguridad import requiere_rol
-from nucleo.sedes import RUTA_CENTRAL, conectar, correo_en_uso, listar_sedes, ruta_sede
+from nucleo.sedes import conectar_central, conectar_sede, correo_en_uso, listar_sedes, nombre_nuevo_esquema
 
 
 # Vistas de solo lectura de cada sede: (título, encabezados, consulta)
@@ -75,10 +75,8 @@ ORDER BY c.periodo DESC, curso, materia
 """
 
 
-def _consultar(ruta, sql, parametros=()):
-    if not os.path.exists(ruta):
-        return []
-    conexion = conectar(ruta)
+def _consultar(esquema, sql, parametros=()):
+    conexion = conectar_sede(esquema)
     try:
         asegurar(conexion)
         return conexion.execute(sql, parametros).fetchall()
@@ -86,13 +84,11 @@ def _consultar(ruta, sql, parametros=()):
         conexion.close()
 
 
-def _indicadores(ruta):
+def _indicadores(esquema):
     """Cifras de una sede para el monitoreo general."""
     cifras = {'estudiantes': 0, 'docentes': 0, 'grupos': 0, 'materias': 0, 'matriculas': 0,
               'calificadas': 0, 'aspirantes': 0, 'ultima': None}
-    if not os.path.exists(ruta):
-        return cifras
-    conexion = conectar(ruta)
+    conexion = conectar_sede(esquema)
     try:
         asegurar(conexion)
 
@@ -126,11 +122,9 @@ def _estado_plazo(plazo, hoy):
     return 'Abierto'
 
 
-def _avances(ruta):
-    if not os.path.exists(ruta):
-        return []
+def _avances(esquema):
     hoy = datetime.date.today().isoformat()
-    conexion = conectar(ruta)
+    conexion = conectar_sede(esquema)
     try:
         asegurar(conexion)
         plazos = {fila['periodo']: fila for fila in
@@ -157,11 +151,11 @@ def _avances(ruta):
     return filas
 
 
-def _auditoria(ruta, q):
+def _auditoria(esquema, q):
     patron = f'%{q}%'
     return _consultar(
-        ruta, "SELECT fecha, usuario, accion, detalle FROM auditoria "
-              "WHERE ? = '' OR usuario LIKE ? OR accion LIKE ? OR detalle LIKE ? "
+        esquema, "SELECT fecha, usuario, accion, detalle FROM auditoria "
+              "WHERE ? = '' OR usuario ILIKE ? OR accion ILIKE ? OR detalle ILIKE ? "
               "ORDER BY id DESC LIMIT 500", (q, patron, patron, patron))
 
 
@@ -169,7 +163,7 @@ superadmin_bp = Blueprint('superadmin', __name__, url_prefix='/superadmin')
 
 
 def _panel():
-    central = conectar(RUTA_CENTRAL)
+    central = conectar_central()
     try:
         admins = central.execute(
             'SELECT a.id, a.correo, a.sede_id, s.nombre AS sede FROM admins_sede a '
@@ -192,7 +186,7 @@ def monitoreo():
     """Cifras de todas las sedes en una sola tabla."""
     filas = []
     for sede in listar_sedes():
-        cifras = _indicadores(ruta_sede(sede['archivo']))
+        cifras = _indicadores(sede['archivo'])
         cifras['avance'] = round(cifras['calificadas'] * 100 / cifras['matriculas']) if cifras['matriculas'] else 0
         filas.append({'sede': sede, 'cifras': cifras})
     totales = {clave: sum(f['cifras'][clave] for f in filas)
@@ -208,18 +202,18 @@ def crear_sede():
     if not nombre:
         flash('Escriba el nombre de la sede.', 'error')
         return redirect(url_for('superadmin.inicio'))
-    archivo = f'sede_{uuid.uuid4().hex[:10]}.db'
-    central = conectar(RUTA_CENTRAL)
+    archivo = nombre_nuevo_esquema()
+    central = conectar_central()
     try:
         central.execute('INSERT INTO sedes (nombre, archivo) VALUES (?, ?)', (nombre, archivo))
         central.commit()
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         flash('Ya existe una sede con ese nombre.', 'error')
         return redirect(url_for('superadmin.inicio'))
     finally:
         central.close()
     # Cada sede empieza con su propia base, con todas las tablas
-    crear_base(ruta_sede(archivo))
+    crear_base(archivo)
     flash(f'Sede «{nombre}» creada. Ahora cree su administrador.', 'ok')
     return redirect(url_for('superadmin.inicio'))
 
@@ -228,7 +222,7 @@ def crear_sede():
 @requiere_rol('superadmin')
 def ver_sede(sede_id):
     """Vista de solo lectura de una sede: su resumen, sus listas y sus administradores."""
-    central = conectar(RUTA_CENTRAL)
+    central = conectar_central()
     try:
         sede = central.execute('SELECT id, nombre, archivo FROM sedes WHERE id = ?', (sede_id,)).fetchone()
         administradores = central.execute(
@@ -238,29 +232,28 @@ def ver_sede(sede_id):
     if sede is None:
         abort(404)
 
-    ruta = ruta_sede(sede['archivo'])
+    esquema = sede['archivo']
     seccion = request.args.get('seccion', 'resumen')
     if seccion == 'resumen':
-        conteos = [(titulo, _consultar(ruta, f'SELECT COUNT(*) FROM {tabla}')[0][0]
-                    if os.path.exists(ruta) else 0)
+        conteos = [(titulo, _consultar(esquema, f'SELECT COUNT(*) FROM {tabla}')[0][0])
                    for titulo, tabla in TABLAS_RESUMEN]
         return render_template('superadmin/sede.html', sede=sede, administradores=administradores,
                                seccion=seccion, conteos=conteos, titulo='Resumen', encabezados=[], filas=[])
     q = request.args.get('q', '').strip()
     if seccion == 'horarios':
         titulo, encabezados = 'Horarios', ['Periodo', 'Curso', 'Materia', 'Docente', 'Jornada', 'Horario']
-        filas = _consultar(ruta, SQL_HORARIOS)
+        filas = _consultar(esquema, SQL_HORARIOS)
     elif seccion == 'avances':
         titulo = 'Avances de notas'
         encabezados = ['Periodo', 'Curso', 'Materia', 'Docente', 'Estudiantes', 'Con notas', 'Avance',
                        'Criterios', 'Plazo de notas', 'Estado']
-        filas = _avances(ruta)
+        filas = _avances(esquema)
     elif seccion == 'auditoria':
         titulo, encabezados = 'Auditoría', ['Fecha', 'Usuario', 'Acción', 'Detalle']
-        filas = _auditoria(ruta, q)
+        filas = _auditoria(esquema, q)
     elif seccion in VISTAS_SEDE:
         titulo, encabezados, sql = VISTAS_SEDE[seccion]
-        filas = _consultar(ruta, sql)
+        filas = _consultar(esquema, sql)
     else:
         abort(404)
     return render_template('superadmin/sede.html', sede=sede, administradores=administradores,
@@ -276,14 +269,14 @@ def editar_sede(sede_id):
     if not nombre:
         flash('Escriba el nombre de la sede.', 'error')
         return redirect(url_for('superadmin.inicio'))
-    central = conectar(RUTA_CENTRAL)
+    central = conectar_central()
     try:
         if central.execute('SELECT 1 FROM sedes WHERE id = ?', (sede_id,)).fetchone() is None:
             abort(404)
         central.execute('UPDATE sedes SET nombre = ? WHERE id = ?', (nombre, sede_id))
         central.commit()
         flash(f'Nombre de la sede actualizado a «{nombre}».', 'ok')
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         flash('Ya existe una sede con ese nombre.', 'error')
     finally:
         central.close()
@@ -305,13 +298,13 @@ def crear_administrador():
     elif correo_en_uso(correo):
         flash('Ese correo ya está en uso en alguna sede.', 'error')
     else:
-        central = conectar(RUTA_CENTRAL)
+        central = conectar_central()
         try:
             central.execute('INSERT INTO admins_sede (correo, contrasena_hash, sede_id) VALUES (?, ?, ?)',
                             (correo, generate_password_hash(contrasena), int(sede_id)))
             central.commit()
             flash('Administrador de sede creado.', 'ok')
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             flash('No se pudo crear: revise la sede y el correo.', 'error')
         finally:
             central.close()
@@ -321,7 +314,7 @@ def crear_administrador():
 @superadmin_bp.route('/administradores/<int:admin_id>/eliminar', methods=['POST'])
 @requiere_rol('superadmin')
 def eliminar_administrador(admin_id):
-    central = conectar(RUTA_CENTRAL)
+    central = conectar_central()
     try:
         if central.execute('DELETE FROM admins_sede WHERE id = ?', (admin_id,)).rowcount == 0:
             abort(404)
