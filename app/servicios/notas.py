@@ -13,7 +13,35 @@ from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from werkzeug.utils import secure_filename
 
+import datetime
+
 from nucleo.db import get_db
+
+PLAZO_CERRADO = 'El plazo para subir notas de este periodo ya cerró. Puede consultarlas, pero no cambiarlas.'
+
+
+def plazo_abierto(periodo):
+    """Un periodo sin plazo queda abierto. Con plazo, solo se puede editar entre las fechas indicadas."""
+    fila = get_db().execute('SELECT abre, cierra FROM plazos_notas WHERE periodo = ?', (periodo,)).fetchone()
+    if fila is None:
+        return True
+    hoy = datetime.date.today().isoformat()
+    return (not fila['abre'] or fila['abre'] <= hoy) and (not fila['cierra'] or hoy <= fila['cierra'])
+
+
+def plazos():
+    """Un registro por periodo que tiene cursos, con sus fechas y si está abierto."""
+    db = get_db()
+    guardados = {f['periodo']: f for f in db.execute('SELECT periodo, abre, cierra FROM plazos_notas')}
+    periodos = [f['periodo'] for f in db.execute('SELECT DISTINCT periodo FROM cursos ORDER BY periodo DESC')]
+    lista = []
+    for periodo in periodos:
+        fila = guardados.get(periodo)
+        lista.append({'periodo': periodo,
+                      'abre': fila['abre'] if fila else None,
+                      'cierra': fila['cierra'] if fila else None,
+                      'abierto': plazo_abierto(periodo)})
+    return lista
 
 
 def info_curso(curso_id):

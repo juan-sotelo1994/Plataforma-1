@@ -1,0 +1,52 @@
+{% from '_alertas.html' import modal_errores, modal_avisos %}
+{% extends 'colegio/base_colegio.html' %}
+
+{% block title %}Crear contraseña | {{ empresa.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .insc-fondo { background: #ffffff; min-height: auto; padding: 36px 16px 48px; }
+    .insc-contrasena { max-width: 380px; margin: 0 auto; }
+    .insc-contrasena .tarjeta { background: #1e3a8a; border-radius: 16px; padding: 22px 20px; box-shadow: 0 18px 36px rgba(30, 58, 138, .28); color: #fff; }
+    .insc-contrasena h1 { font-size: 20px; text-align: center; margin: 0 0 6px; color: #0f172a; }
+    .insc-contrasena .ayuda-texto { text-align: center; color: #475569; font-size: 14px; margin: 0 0 16px; }
+    .insc-contrasena .tarjeta h2 { font-size: 16px; text-align: center; margin: 0 0 14px; color: #fff; }
+    .insc-contrasena form { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .insc-contrasena .campo { width: 300px; display: flex; flex-direction: column; gap: 5px; }
+    .insc-contrasena .campo span { font-size: 13px; color: #dbeafe; font-weight: 600; }
+    .insc-contrasena .campo small { color: #bfdbfe; }
+    .insc-contrasena input { height: 42px; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; padding: 0 12px; font-size: 14px; width: 100%; box-sizing: border-box; }
+    .insc-contrasena input:focus { outline: none; border-color: #16a34a; background: #fff; }
+    .insc-contrasena .boton { width: 300px; height: 44px; border: none; border-radius: 10px; background: #16a34a; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 6px; }
+    .insc-contrasena .boton:hover { background: #15803d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="insc-fondo">
+    <div class="insc-contrasena">
+        {% with mensajes = get_flashed_messages(with_categories=true) %}
+        {{ modal_errores(mensajes) }}
+        {{ modal_avisos(mensajes) }}
+        {% endwith %}
+
+        <h1>Cree su contraseña</h1>
+        <p class="ayuda-texto">Hola, {{ aspirante.nombres }}. Esta contraseña le servirá para ingresar y subir sus documentos.</p>
+
+        <div class="tarjeta">
+            <h2>Contraseña de acceso</h2>
+            <form method="post" action="{{ url_for('web.inscripcion_contrasena') }}" novalidate>
+                <label class="campo">
+                    <span>Contraseña <small>(mínimo 6 caracteres)</small></span>
+                    <input type="password" name="contrasena" minlength="6" required autocomplete="new-password">
+                </label>
+                <label class="campo">
+                    <span>Confirmar contraseña</span>
+                    <input type="password" name="confirmacion" minlength="6" required autocomplete="new-password">
+                </label>
+                <button type="submit" class="boton">Guardar contraseña</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

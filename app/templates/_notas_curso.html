@@ -1,12 +1,19 @@
 <!-- Criterios, notas y definitiva de un curso. Lo usan el portal del docente y el del administrador.
-     Recibe: curso, criterios, total, estudiantes y rutas (nombres de las rutas de esta pantalla). -->
+     Recibe: curso, criterios, total, estudiantes, rutas y puede_editar. -->
+{% if not puede_editar %}
+<p class="nota-pie" style="margin:0 0 14px; padding:10px 12px; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; color:#9a3412;">
+    <i class="fa-solid fa-lock"></i> {{ aviso_plazo }}
+</p>
+{% endif %}
 
 <section class="bloque-admin">
     <h2>Criterios de evaluación
         <span class="contador">({{ criterios|length }}) · suman {{ '%g' % total }} % de 100 %</span>
+        {% if puede_editar %}
         <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-criterio" style="margin-left:auto;">
             <i class="fa-solid fa-plus"></i> Agregar criterio
         </button>
+        {% endif %}
     </h2>
 
     {% if criterios %}
@@ -25,6 +32,7 @@
                     <td>{{ criterio.nombre }}</td>
                     <td>{{ '%g' % criterio.porcentaje }} %</td>
                     <td class="col-acciones">
+                        {% if puede_editar %}
                         <form method="post" action="{{ url_for(rutas.eliminar, curso_id=curso.id, criterio_id=criterio.id) }}" style="display:inline;"
                               data-confirmar="Se borrarán también las notas de este criterio. Esta acción no se puede deshacer."
                               data-confirmar-titulo="¿Eliminar este criterio?"
@@ -33,6 +41,7 @@
                               data-confirmar-color="#cc3333">
                             <button type="submit" class="boton-admin boton-admin-peligro">Eliminar</button>
                         </form>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -89,7 +98,7 @@
                         <td>
                             <input type="number" name="nota_{{ criterio.id }}_{{ estudiante.id }}" min="0" max="5" step="0.1"
                                    value="{{ '%.1f' % estudiante.notas[criterio.id] if criterio.id in estudiante.notas else '' }}"
-                                   placeholder="0.0 – 5.0" class="entrada-nota">
+                                   placeholder="0.0 – 5.0" class="entrada-nota" {% if not puede_editar %}disabled{% endif %}>
                         </td>
                         {% endfor %}
                         <td><strong>{{ '%.2f' % estudiante.definitiva if estudiante.definitiva is not none else '—' }}</strong></td>
@@ -98,7 +107,7 @@
                 </tbody>
             </table>
         </div>
-        {% if criterios %}
+        {% if criterios and puede_editar %}
         <p class="nota-pie">La definitiva es el promedio de las notas según sus porcentajes. Aparece cuando los porcentajes suman 100 % y el estudiante tiene todas sus notas. Deje vacío un campo para borrar esa nota.</p>
         <div class="acciones-form">
             <button type="submit" class="boton-admin boton-admin-primario">Guardar notas</button>

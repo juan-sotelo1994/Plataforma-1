@@ -6,17 +6,72 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/consola.css') }}">
 <style>
-    .inscripcion { max-width: 880px; margin: 32px auto 48px; padding: 0 16px; }
-    .inscripcion h1 { font-size: 26px; font-weight: 600; margin: 0 0 6px; }
-    .inscripcion > p { color: var(--muted); margin: 0 0 18px; }
+    /* Pantalla de inscripción: tarjeta centrada sobre un fondo, con botón verde */
+    .insc-fondo { min-height: 100vh; background: linear-gradient(135deg, #0f3d2e 0%, #14532d 45%, #1e3a8a 100%); padding: 40px 16px 56px; }
+    .inscripcion { max-width: 860px; margin: 0 auto; }
+    .insc-cabecera { text-align: center; color: #fff; margin-bottom: 22px; }
+    .insc-cabecera img { width: 64px; height: 64px; margin-bottom: 8px; }
+    .insc-cabecera h1 { font-size: 26px; font-weight: 700; margin: 0 0 6px; color: #fff; }
+    .insc-cabecera p { margin: 0 auto; max-width: 620px; color: #dcfce7; font-size: 15px; }
+    .inscripcion .bloque-formulario { background: #fff; border: none; border-radius: 18px; padding: 28px 28px 22px; box-shadow: 0 24px 48px rgba(0, 0, 0, .28); }
+    .inscripcion .bloque-formulario > h2 { font-size: 18px; margin: 0 0 16px; color: #0f172a; }
+    .inscripcion input, .inscripcion select, .inscripcion textarea { height: 46px; border-radius: 10px; border: 1px solid #cbd5e1; }
+    .inscripcion textarea { height: auto; }
+    .inscripcion .boton-admin-primario { background: #15803d; border-color: #15803d; height: 48px; border-radius: 10px; font-weight: 600; font-size: 15px; padding: 0 22px; }
+    .inscripcion .boton-admin-primario:hover { background: #166534; border-color: #166534; }
+    .inscripcion .boton-admin { height: 48px; border-radius: 10px; }
+    /* Formulario angosto y de una sola columna, como una pantalla de ingreso */
+    .inscripcion { max-width: 380px; }
+    .inscripcion .bloque-formulario { padding: 20px 20px 18px; border-radius: 16px; }
+    .inscripcion .bloque-formulario > h2 { text-align: center; font-size: 17px; border: none; padding: 0; }
+    .inscripcion .formulario-admin { grid-template-columns: 1fr !important; gap: 10px; }
+    .inscripcion .formulario-admin > h2 { grid-column: auto !important; margin: 10px 0 0 !important; font-size: 15px; color: #334155; }
+    .inscripcion .form-field span { font-size: 13px; color: #334155; font-weight: 600; }
+    .inscripcion input, .inscripcion select { background: #f8fafc; border-color: #e2e8f0; height: 42px; border-radius: 10px; padding: 0 12px; font-size: 14px; }
+    .inscripcion input:focus, .inscripcion select:focus { outline: none; border-color: #15803d; background: #fff; box-shadow: 0 0 0 3px rgba(21, 128, 61, .15); }
+    .inscripcion .insc-acciones { display: flex; flex-direction: column; gap: 10px; }
+    .inscripcion .insc-acciones .boton-admin { width: 100%; justify-content: center; }
+    .inscripcion .insc-acciones .boton-admin-primario { height: 44px; font-size: 15px; }
+    .inscripcion .insc-acciones .boton-admin:not(.boton-admin-primario) { background: #fff; color: #15803d; border: 1px solid #15803d; }
+    /* Fondo blanco, tarjeta azul y campos centrados */
+    .insc-fondo { background: #ffffff !important; min-height: auto; padding: 36px 16px 48px; }
+    .insc-cabecera h1 { color: #0f172a !important; }
+    .insc-cabecera p { color: #475569 !important; }
+    .inscripcion .bloque-formulario { background: #1e3a8a !important; box-shadow: 0 18px 36px rgba(30, 58, 138, .28) !important; }
+    .inscripcion .bloque-formulario > h2 { color: #ffffff !important; background: transparent !important; }
+    .inscripcion .formulario-admin > h2 { color: #dbeafe !important; }
+    .inscripcion .form-field span { color: #dbeafe !important; }
+    .inscripcion .form-field small { color: #bfdbfe !important; }
+    .inscripcion .formulario-admin { justify-items: center; }
+    .inscripcion .formulario-admin > .form-field,
+    .inscripcion .formulario-admin > .insc-acciones { width: 100%; max-width: 300px; justify-self: center; }
+    .inscripcion .formulario-admin > h2 { text-align: center; }
+    .inscripcion .insc-acciones .boton-admin:not(.boton-admin-primario) { background: transparent !important; color: #ffffff !important; border: 1px solid #ffffff !important; }
+    .inscripcion .insc-acciones .boton-admin-primario { background: #22c55e !important; border-color: #22c55e !important; color: #052e16; }
+    .inscripcion .insc-acciones .boton-admin-primario:hover { background: #16a34a !important; border-color: #16a34a !important; }
+    /* Columna centrada: todos los campos y botones con el mismo ancho */
+    .inscripcion .formulario-admin { display: flex !important; flex-direction: column; align-items: center; gap: 12px; }
+    .inscripcion .formulario-admin > .form-field,
+    .inscripcion .formulario-admin > .insc-acciones { width: 300px !important; max-width: 100%; margin: 0; }
+    .inscripcion .formulario-admin > h2 { width: 300px; margin: 6px 0 0 !important; text-align: center; }
+    .inscripcion .formulario-admin > .form-field { display: flex; flex-direction: column; gap: 5px; }
+    .inscripcion .formulario-admin > .insc-acciones { margin-top: 8px; }
+    .inscripcion .insc-acciones .boton-admin-primario { background: #16a34a !important; border-color: #16a34a !important; color: #ffffff !important; }
+    .inscripcion .insc-acciones .boton-admin-primario:hover { background: #15803d !important; border-color: #15803d !important; }
+    .inscripcion .insc-acciones .boton-admin:not(.boton-admin-primario) { background: transparent !important; color: #ffffff !important; border: 1px solid #93c5fd !important; }
+    .inscripcion .insc-acciones .boton-admin:not(.boton-admin-primario):hover { background: rgba(255, 255, 255, .12) !important; }
 </style>
 {% endblock %}
 
 {% block content %}
 
+<div class="insc-fondo">
 <div class="inscripcion">
-    <h1>Inscripción de aspirantes</h1>
-    <p>Diligencie sus datos y cargue el escaneado de su documento de identidad. Después podrá subir el resto de los documentos desde su cuenta.</p>
+    <div class="insc-cabecera">
+        <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="">
+        <h1>Inscripción de aspirantes</h1>
+        <p>Diligencie sus datos y cargue el escaneado de su documento de identidad. Después podrá subir el resto de los documentos desde su cuenta.</p>
+    </div>
 
     {% with mensajes = get_flashed_messages(with_categories=true) %}
     {{ modal_errores(mensajes) }}
@@ -35,8 +90,13 @@
                 <input type="text" name="apellidos" value="{{ datos.apellidos or '' }}" required>
             </label>
             <label class="form-field">
-                <span>Número de documento de identidad <small>*</small></span>
-                <input type="text" name="documento" value="{{ datos.documento or '' }}" required>
+                <span>Sede a la que se inscribe <small>*</small></span>
+                <select name="sede_id" required>
+                    <option value="">— Seleccione —</option>
+                    {% for sede in sedes %}
+                    <option value="{{ sede.id }}">{{ sede.nombre }}</option>
+                    {% endfor %}
+                </select>
             </label>
 
             <h2 style="grid-column:1 / -1; font-size:16px; margin:8px 0 0;">Cuenta de acceso</h2>
@@ -45,14 +105,6 @@
                 <input type="email" name="correo" value="{{ datos.correo or '' }}" required>
             </label>
             <span></span>
-            <label class="form-field">
-                <span>Contraseña <small>* (mínimo 6 caracteres)</small></span>
-                <input type="password" name="contrasena" minlength="6" required>
-            </label>
-            <label class="form-field">
-                <span>Confirmar contraseña <small>*</small></span>
-                <input type="password" name="confirmacion" minlength="6" required>
-            </label>
 
             <div class="acciones-form">
                 <a href="{{ url_for('autenticar.login') }}" class="boton-admin">Ya tengo cuenta</a>
@@ -62,4 +114,5 @@
     </section>
 </div>
 
+</div>
 {% endblock %}

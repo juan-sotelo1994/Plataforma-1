@@ -7,7 +7,8 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, s
 from werkzeug.security import generate_password_hash
 
 from nucleo.db import get_db
-from servicios import notas
+from servicios import estudiantes_csv, notas
+from nucleo.sedes import correo_en_uso
 from servicios.documentos import DOCS_DIR
 from servicios.comprobante import generar_comprobante
 from servicios import documentos_docente as docs_docente
@@ -116,18 +117,25 @@ ENTIDADES = {
         'singular': 'estudiante',
         'tabla': 'estudiantes',
         'consulta': ("SELECT e.id, e.codigo, e.nombres || ' ' || e.apellidos AS nombre, "
-                     "e.documento, e.correo, e.programa, j.nombre AS jornada "
+                     "e.documento, e.correo, e.programa, j.nombre AS jornada, "
+                     "CASE WHEN EXISTS (SELECT 1 FROM usuarios u WHERE u.estudiante_id = e.id) "
+                     "THEN 'Habilitado' ELSE 'Sin acceso' END AS acceso, "
+                     "EXISTS (SELECT 1 FROM aspirantes a WHERE a.estudiante_id = e.id OR a.documento = e.documento) AS inscrito "
                      "FROM estudiantes e LEFT JOIN jornadas j ON j.id = e.jornada_id "
                      "ORDER BY e.apellidos, e.nombres"),
         'columnas': [('Código', 'codigo'), ('Nombre', 'nombre'), ('Documento', 'documento'),
-                     ('Programa', 'programa'), ('Jornada', 'jornada')],
+                     ('Programa', 'programa'), ('Jornada', 'jornada'), ('Acceso a la plataforma', 'acceso')],
         'campos': [
             {'nombre': 'codigo', 'etiqueta': 'Código', 'requerido': True},
             {'nombre': 'nombres', 'etiqueta': 'Nombres', 'requerido': True},
             {'nombre': 'apellidos', 'etiqueta': 'Apellidos', 'requerido': True},
             {'nombre': 'documento', 'etiqueta': 'Documento', 'requerido': True},
             {'nombre': 'correo', 'etiqueta': 'Correo', 'tipo': 'email'},
-            {'nombre': 'programa', 'etiqueta': 'Programa'},
+            {'nombre': 'programa', 'etiqueta': 'Programa', 'tipo': 'select', 'solo_texto': True,
+             'opciones_sql': ("SELECT g.grupo || ' · ' || g.periodo AS id, "
+                              "'Ciclo ' || COALESCE(g.ciclo, '-') || ' · ' || g.grupo || ' · ' || g.periodo AS texto "
+                              "FROM grupos_curso g ORDER BY g.periodo DESC, g.ciclo, g.grupo"),
+             'ayuda': 'Curso al que pertenece el estudiante.'},
             {'nombre': 'jornada_id', 'etiqueta': 'Jornada', 'tipo': 'select',
              'opciones_sql': 'SELECT id, nombre AS texto FROM jornadas ORDER BY nombre'},
             {'nombre': 'fecha_nacimiento', 'etiqueta': 'Fecha de nacimiento', 'tipo': 'date'},
@@ -347,7 +355,7 @@ def _valores_del_formulario(config):
             if not bruto:
                 valores[campo['nombre']] = None
             else:
-                valores[campo['nombre']] = int(bruto) if bruto.isdigit() else bruto
+                valores[campo['nombre']] = bruto if campo.get('solo_texto') or not bruto.isdigit() else int(bruto)
         else:
             valores[campo['nombre']] = bruto or None
     return valores
@@ -406,7 +414,7 @@ def entidad(entidad):
                 if len(clave) < 6:
                     raise ValueError('La clave temporal debe tener al menos 6 caracteres.')
                 valores['correo'] = (valores.get('correo') or '').lower()
-                if db.execute('SELECT 1 FROM usuarios WHERE correo = ?', (valores['correo'],)).fetchone():
+                if correo_en_uso(valores['correo']):
                     raise ValueError('Ese correo ya tiene una cuenta en la plataforma.')
                 # El documento real lo registra el docente en Mis datos
                 valores['documento'] = f'PENDIENTE-{uuid.uuid4().hex[:8]}'
@@ -683,6 +691,132 @@ def quitar_estudiante(grupo_id, estudiante_id):
     return redirect(url_for('admin.curso_grupo', grupo_id=grupo_id))
 
 
+@admin_bp.route('/estudiantes/exportar')
+@requiere_admin
+def exportar_estudiantes():
+    """Descarga todos los estudiantes en CSV (solo datos escritos)."""
+    contenido = estudiantes_csv.exportar(get_db())
+    return send_file(io.BytesIO(contenido), mimetype='text/csv', as_attachment=True,
+                     download_name='estudiantes.csv')
+
+
+@admin_bp.route('/estudiantes/formato')
+@requiere_admin
+def formato_estudiantes():
+    """Plantilla vacía con los encabezados que acepta la importación."""
+    return send_file(io.BytesIO(estudiantes_csv.formato()), mimetype='text/csv', as_attachment=True,
+                     download_name='formato_estudiantes.csv')
+
+
+@admin_bp.route('/estudiantes/importar', methods=['POST'])
+@requiere_admin
+def importar_estudiantes():
+    archivo = request.files.get('archivo')
+    if archivo is None or not archivo.filename or not archivo.filename.lower().endswith('.csv'):
+        flash('Seleccione un archivo .csv.', 'error')
+        return redirect(url_for('admin.entidad', entidad='estudiantes'))
+    ok, mensajes, creados, actualizados = estudiantes_csv.importar(get_db(), archivo.read())
+    if ok:
+        flash(f'Importación lista: {creados} estudiante(s) nuevo(s) y {actualizados} actualizado(s).', 'ok')
+    else:
+        for mensaje in mensajes:
+            flash(mensaje, 'error')
+    return redirect(url_for('admin.entidad', entidad='estudiantes'))
+
+
+@admin_bp.route('/estudiantes/<int:estudiante_id>/acceso/habilitar', methods=['POST'])
+@requiere_admin
+def habilitar_acceso_estudiante(estudiante_id):
+    """Crea la cuenta del estudiante para que entre a la plataforma y vea sus notas."""
+    db = get_db()
+    estudiante = db.execute('SELECT id, correo FROM estudiantes WHERE id = ?', (estudiante_id,)).fetchone()
+    if estudiante is None:
+        abort(404)
+    if db.execute('SELECT 1 FROM usuarios WHERE estudiante_id = ?', (estudiante_id,)).fetchone():
+        flash('Este estudiante ya tiene acceso habilitado.', 'error')
+        return redirect(url_for('admin.entidad', entidad='estudiantes'))
+
+    # Si el estudiante se inscribió, entra con el correo y la contraseña de su inscripción
+    inscripcion = db.execute(
+        'SELECT correo, contrasena_hash FROM aspirantes WHERE estudiante_id = ? OR documento = '
+        '(SELECT documento FROM estudiantes WHERE id = ?) LIMIT 1',
+        (estudiante_id, estudiante_id)).fetchone()
+    if inscripcion is not None:
+        correo, hash_clave = inscripcion['correo'].lower(), inscripcion['contrasena_hash']
+    else:
+        correo = (request.form.get('correo') or estudiante['correo'] or '').strip().lower()
+        contrasena = request.form.get('contrasena', '')
+        if '@' not in correo:
+            flash('Escriba un correo válido para el estudiante.', 'error')
+            return redirect(url_for('admin.entidad', entidad='estudiantes'))
+        if len(contrasena) < 6:
+            flash('Escriba una contraseña inicial de al menos 6 caracteres.', 'error')
+            return redirect(url_for('admin.entidad', entidad='estudiantes'))
+        hash_clave = generate_password_hash(contrasena)
+
+    if correo_en_uso(correo):
+        flash('Ese correo ya tiene una cuenta en la plataforma. Revise el registro del estudiante.', 'error')
+    else:
+        db.execute("INSERT INTO usuarios (correo, contrasena_hash, rol, estudiante_id) VALUES (?, ?, 'estudiante', ?)",
+                   (correo, hash_clave, estudiante_id))
+        db.execute('UPDATE estudiantes SET correo = ? WHERE id = ?', (correo, estudiante_id))
+        db.commit()
+        flash('Acceso habilitado. El estudiante ya puede entrar a la plataforma y ver sus notas.', 'ok')
+    return redirect(url_for('admin.entidad', entidad='estudiantes'))
+
+
+@admin_bp.route('/estudiantes/<int:estudiante_id>/acceso/deshabilitar', methods=['POST'])
+@requiere_admin
+def deshabilitar_acceso_estudiante(estudiante_id):
+    """Quita la cuenta de ingreso. Los datos y las notas del estudiante se conservan."""
+    db = get_db()
+    db.execute("DELETE FROM usuarios WHERE estudiante_id = ? AND rol = 'estudiante'", (estudiante_id,))
+    db.commit()
+    flash('Acceso deshabilitado. El estudiante ya no puede entrar a la plataforma.', 'ok')
+    return redirect(url_for('admin.entidad', entidad='estudiantes'))
+
+
+@admin_bp.route('/calificaciones/plazos', methods=['POST'])
+@requiere_admin
+def guardar_plazo_notas():
+    """Define cuándo abre y cierra el registro de notas de un periodo, o lo cierra de inmediato."""
+    db = get_db()
+    periodo = request.form.get('periodo', '').strip()
+    if not periodo:
+        abort(400)
+    if request.form.get('accion') == 'cerrar':
+        abre = db.execute('SELECT abre FROM plazos_notas WHERE periodo = ?', (periodo,)).fetchone()
+        ayer = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        abre_valor = abre['abre'] if abre else None
+        if abre_valor and abre_valor > ayer:
+            abre_valor = ayer
+        db.execute('INSERT INTO plazos_notas (periodo, abre, cierra) VALUES (?, ?, ?) '
+                   'ON CONFLICT (periodo) DO UPDATE SET cierra = excluded.cierra, abre = excluded.abre',
+                   (periodo, abre_valor, ayer))
+        db.commit()
+        flash(f'Plazo cerrado para el periodo {periodo}. Los docentes ya no pueden cambiar sus notas.', 'ok')
+        return redirect(url_for('admin.entidad', entidad='calificaciones'))
+
+    abre = request.form.get('abre', '').strip() or None
+    cierra = request.form.get('cierra', '').strip() or None
+    try:
+        for valor in (abre, cierra):
+            if valor:
+                datetime.date.fromisoformat(valor)
+    except ValueError:
+        flash('Escriba las fechas del plazo con formato válido.', 'error')
+        return redirect(url_for('admin.entidad', entidad='calificaciones'))
+    if abre and cierra and abre > cierra:
+        flash('La fecha de cierre no puede ser anterior a la de apertura.', 'error')
+        return redirect(url_for('admin.entidad', entidad='calificaciones'))
+    db.execute('INSERT INTO plazos_notas (periodo, abre, cierra) VALUES (?, ?, ?) '
+               'ON CONFLICT (periodo) DO UPDATE SET abre = excluded.abre, cierra = excluded.cierra',
+               (periodo, abre, cierra))
+    db.commit()
+    flash(f'Plazo guardado para el periodo {periodo}.', 'ok')
+    return redirect(url_for('admin.entidad', entidad='calificaciones'))
+
+
 def _vista_calificaciones():
     """Cursos activos (periodo más reciente), con cuántos estudiantes tiene cada uno."""
     db = get_db()
@@ -697,7 +831,8 @@ def _vista_calificaciones():
             "LEFT JOIN docentes d ON d.id = c.docente_id "
             "WHERE c.periodo = ? ORDER BY m.nombre, c.grupo", (periodo['periodo'],)).fetchall()
     return render_template('admin/calificaciones.html', cursos=cursos,
-                           periodo=periodo['periodo'] if periodo else None, entidades=ENTIDADES)
+                           periodo=periodo['periodo'] if periodo else None, entidades=ENTIDADES,
+                           plazos=notas.plazos())
 
 
 # Rutas de la pantalla de notas del curso (la misma que usa el docente)
@@ -732,7 +867,8 @@ def curso_notas(curso_id):
 
     criterios, total, estudiantes = notas.estudiantes_con_notas(curso_id)
     return render_template('admin/curso_notas.html', curso=curso, criterios=criterios, total=total,
-                           estudiantes=estudiantes, rutas=RUTAS_NOTAS_ADMIN, entidades=ENTIDADES)
+                           estudiantes=estudiantes, rutas=RUTAS_NOTAS_ADMIN, entidades=ENTIDADES,
+                           puede_editar=True, aviso_plazo='')
 
 
 @admin_bp.route('/calificaciones/curso/<int:curso_id>/criterios', methods=['POST'])
@@ -834,6 +970,8 @@ def editar(entidad, registro_id):
         campo['valor'] = None if campo.get('no_columna') else registro[campo['nombre']]
         if campo.get('tipo') == 'select':
             campo['opciones'] = _opciones(campo)
+        if campo.get('solo_texto') and campo['valor'] and campo['valor'] not in [o[0] for o in campo['opciones']]:
+            campo['opciones'].append((campo['valor'], campo['valor']))
         campos.append(campo)
 
     materias_opciones = seleccionadas = None

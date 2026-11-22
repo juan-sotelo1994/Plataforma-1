@@ -57,6 +57,10 @@
 <section class="bloque-admin">
     <h2 style="display:flex; align-items:center; gap:12px;">
         Registros <span class="contador">({{ filas|length }})</span>
+        {% if entidad == 'estudiantes' %}
+        <a href="{{ url_for('admin.exportar_estudiantes') }}" class="boton-admin" style="margin-left:8px;"><i class="fa-solid fa-file-export"></i> Exportar CSV</a>
+        <button type="button" class="boton-admin" data-abrir="ventana-importar" style="margin-left:8px;"><i class="fa-solid fa-file-import"></i> Importar CSV</button>
+        {% endif %}
         <input type="search" id="buscar-registros" placeholder="Buscar en la lista…" autocomplete="off"
                style="margin-left:auto; width:260px; height:36px; padding:0 12px; border:1px solid #cbd5e1; border-radius:8px; font:inherit; font-size:14px; font-weight:400;">
         {% if not config.solo_lectura %}
@@ -108,6 +112,20 @@
                         {% if entidad == 'aspirantes' %}
                         <a href="{{ url_for('admin.documentos_aspirante', aspirante_id=fila['id']) }}" class="boton-admin" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-folder-open"></i> Documentos</a>
                         {% endif %}
+                        {% if entidad == 'estudiantes' %}
+                        {% if fila['acceso'] == 'Habilitado' %}
+                        <form method="post" action="{{ url_for('admin.deshabilitar_acceso_estudiante', estudiante_id=fila['id']) }}" style="display:inline;"
+                              data-confirmar="El estudiante no podrá entrar a la plataforma hasta que se vuelva a habilitar. Sus notas se conservan."
+                              data-confirmar-titulo="¿Deshabilitar el acceso?"
+                              data-confirmar-icono="warning"
+                              data-confirmar-boton="Sí, deshabilitar"
+                              data-confirmar-color="#cc3333">
+                            <button type="submit" class="boton-admin boton-admin-peligro" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-user-slash"></i> Deshabilitar acceso</button>
+                        </form>
+                        {% else %}
+                        <button type="button" class="boton-admin boton-admin-primario" style="height:30px; padding:0 10px; font-size:13px;" data-abrir="ventana-acceso-{{ fila['id'] }}"><i class="fa-solid fa-user-check"></i> Habilitar acceso</button>
+                        {% endif %}
+                        {% endif %}
                         <form method="post" action="{{ url_for('admin.eliminar', entidad=entidad, registro_id=fila['id']) }}" style="display:inline;"
                               data-confirmar="Este registro se eliminará permanentemente. Esta acción no se puede deshacer."
                               data-confirmar-titulo="¿Eliminar este registro?"
@@ -148,6 +166,78 @@
         </div>
     </form>
 </dialog>
+{% endif %}
+
+{% if entidad == 'estudiantes' and not editando %}
+<!-- Ventana para importar estudiantes desde un CSV -->
+<dialog id="ventana-importar" class="dialog" aria-labelledby="titulo-importar">
+    <form method="post" action="{{ url_for('admin.importar_estudiantes') }}" enctype="multipart/form-data"
+          data-confirmar="Los estudiantes del archivo se crearán o se actualizarán (según su documento)."
+          data-confirmar-titulo="¿Importar el archivo?"
+          data-confirmar-boton="Sí, importar"
+          data-confirmar-color="#1e3a8a">
+        <div class="dialog-head">
+            <h2 id="titulo-importar"><i class="fa-solid fa-file-import"></i>Importar estudiantes</h2>
+            <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="dialog-body">
+            <p class="ayuda" style="margin:0 0 10px;">Suba un archivo CSV con las columnas del formato. Use <strong>;</strong> como separador. Solo datos escritos: los documentos en PDF se suben aparte.</p>
+            <p class="ayuda" style="margin:0 0 14px;">Las jornadas van con el nombre tal como aparece en Jornadas. Las fechas van como AAAA-MM-DD. Si un estudiante ya existe (mismo documento), se actualiza.</p>
+            <a href="{{ url_for('admin.formato_estudiantes') }}" class="boton-admin"><i class="fa-solid fa-file-csv"></i> Descargar formato</a>
+            <div class="form-field completo" style="margin-top:14px;">
+                <span>Archivo CSV</span>
+                <label class="boton-admin boton-admin-primario boton-archivo" style="width:max-content;">
+                    <i class="fa-solid fa-paperclip"></i> Seleccionar archivo
+                    <input type="file" name="archivo" accept=".csv,text/csv" required
+                           onchange="this.closest('.form-field').querySelector('.nombre-archivo').textContent = this.files[0] ? this.files[0].name : 'Ningún archivo seleccionado'">
+                </label>
+                <span class="nombre-archivo">Ningún archivo seleccionado</span>
+            </div>
+        </div>
+        <div class="dialog-foot">
+            <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
+            <button type="submit" class="boton-admin boton-admin-primario">Importar</button>
+        </div>
+    </form>
+</dialog>
+{% endif %}
+
+{% if entidad == 'estudiantes' and not editando %}
+{% for fila in filas %}{% if fila['acceso'] != 'Habilitado' %}
+<!-- Ventana para habilitar el acceso de este estudiante -->
+<dialog id="ventana-acceso-{{ fila['id'] }}" class="dialog" aria-labelledby="titulo-acceso-{{ fila['id'] }}">
+    <form method="post" action="{{ url_for('admin.habilitar_acceso_estudiante', estudiante_id=fila['id']) }}"
+          data-confirmar="{% if fila['inscrito'] %}El estudiante podrá entrar con el correo y la contraseña de su inscripción.{% else %}El estudiante entrará con este correo y esta contraseña.{% endif %}"
+          data-confirmar-titulo="¿Habilitar el acceso?"
+          data-confirmar-boton="Sí, habilitar"
+          data-confirmar-color="#43a047">
+        <div class="dialog-head">
+            <h2 id="titulo-acceso-{{ fila['id'] }}"><i class="fa-solid fa-user-check"></i>Habilitar acceso</h2>
+            <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="dialog-body">
+            <p class="ayuda" style="margin:0 0 12px;">{{ fila['nombre'] }} · {{ fila['documento'] }}</p>
+            {% if fila['inscrito'] %}
+            <p style="margin:0;">Se habilitará el acceso con el correo y la contraseña que la persona creó en su inscripción. No hay que escribir nada.</p>
+            {% else %}
+            <label class="form-field completo">
+                <span>Correo de ingreso</span>
+                <input type="email" name="correo" value="{{ fila['correo'] or '' }}" required>
+            </label>
+            <label class="form-field completo">
+                <span>Contraseña inicial</span>
+                <input type="password" name="contrasena" minlength="6" required autocomplete="new-password">
+                <small class="ayuda">Mínimo 6 caracteres. Este estudiante no tiene inscripción, por eso se le asigna una.</small>
+            </label>
+            {% endif %}
+        </div>
+        <div class="dialog-foot">
+            <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
+            <button type="submit" class="boton-admin boton-admin-primario">Habilitar</button>
+        </div>
+    </form>
+</dialog>
+{% endif %}{% endfor %}
 {% endif %}
 
 <!-- Ventana para editar el registro: se abre sobre la lista -->

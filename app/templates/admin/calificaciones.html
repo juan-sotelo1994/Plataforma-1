@@ -7,6 +7,51 @@
 <h1>Calificaciones</h1>
 <p>{% if periodo %}Cursos activos del periodo {{ periodo }}. Use «Calificar» para definir los criterios del curso y registrar las notas.{% else %}Todavía no hay cursos registrados.{% endif %}</p>
 
+{% if plazos %}
+{% for p in plazos %}
+<form id="plazo-{{ loop.index }}" method="post" action="{{ url_for('admin.guardar_plazo_notas') }}" style="display:none;">
+    <input type="hidden" name="periodo" value="{{ p.periodo }}">
+</form>
+{% endfor %}
+<section class="bloque-admin">
+    <h2>Plazos para subir notas</h2>
+    <p class="ayuda" style="margin:0 0 12px;">Mientras el plazo esté abierto, los docentes pueden registrar y cambiar las notas de sus cursos. Cuando cierra, solo pueden consultarlas. Un periodo sin fechas queda abierto.</p>
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Periodo</th>
+                    <th scope="col">Abre</th>
+                    <th scope="col">Cierra</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col" class="col-acciones">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in plazos %}
+                <tr>
+                    <td>{{ p.periodo }}</td>
+                    <td><input type="date" name="abre" form="plazo-{{ loop.index }}" value="{{ p.abre or '' }}"></td>
+                    <td><input type="date" name="cierra" form="plazo-{{ loop.index }}" value="{{ p.cierra or '' }}"></td>
+                    <td>
+                        {% if p.abierto %}
+                        <span class="nota-resumen" style="background:var(--ok-bg); color:var(--ok);">Abierto</span>
+                        {% else %}
+                        <span class="nota-resumen" style="background:var(--alerta-bg); color:var(--alerta);">Cerrado</span>
+                        {% endif %}
+                    </td>
+                    <td class="col-acciones">
+                        <button type="submit" name="accion" value="guardar" form="plazo-{{ loop.index }}" class="boton-admin boton-admin-primario" style="height:30px; padding:0 10px; font-size:13px;">Guardar</button>
+                        <button type="submit" name="accion" value="cerrar" form="plazo-{{ loop.index }}" class="boton-admin boton-admin-peligro" style="height:30px; padding:0 10px; font-size:13px;">Cerrar ahora</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
 <section class="bloque-admin">
     <h2 style="display:flex; align-items:center; gap:12px;">
         Cursos <span class="contador">({{ cursos|length }})</span>
