@@ -11,13 +11,14 @@ Este archivo resume lo que se construyó en la sesión de desarrollo para que se
 | `version9` | `b4112fe` | Monitoreo general, auditoría por sede, matrícula financiera (recibos) | No |
 | `version10` | `0ef780c` | Notas por periodo con ciclo, promedio parcial, PDF de notas con foto y observaciones, foto del estudiante, filtros, cambio de contraseña | Sí |
 | `version11` | `46d02c7` | Migración de SQLite a PostgreSQL (sección 3) | Sí |
-| `version12` | (este commit) | Finanzas por sede: perfil financiero, administradora financiera, bitácora de accesos, kárdex y bajas (sección 5) | No |
+| `version12` | `4530a35` | Finanzas por sede: perfil financiero, administradora financiera, bitácora de accesos, kárdex y bajas (sección 5) | Sí |
+| `version13` | (este commit) | Sedes y administradores de sede en ventanas de creación, igual que en finanzas | No |
 
 El PR de `version10` no se ha creado: `gh` no está autenticado en el equipo de Windows (`gh auth login`).
 
 ## 2. Cómo pasar al equipo Linux
 
-1. **Código:** `git clone https://github.com/juan-sotelo1994/Plataforma-1.git` y `git checkout version12`.
+1. **Código:** `git clone https://github.com/juan-sotelo1994/Plataforma-1.git` y `git checkout version13`.
 2. **PostgreSQL** en Linux (por ejemplo `sudo apt install postgresql`). Crear el usuario `instituto_app` y la base `instituto` con dueño `instituto_app`.
 3. **Datos:** copiar a mano el respaldo `app/instance/instituto.dump` (no está en GitHub porque contiene datos personales y contraseñas cifradas) y restaurarlo:
    ```bash
@@ -97,7 +98,7 @@ python app.py
 
 ## 7. Pendientes
 
-- Subir `version12` a GitHub y crear el PR (requiere `gh auth login`).
+- Crear el PR de `version12` y, después, el de `version13` (requiere `gh auth login`).
 - Finanzas: los pagos de pensión por estudiante no están conectados con los recibos de matrícula; el ingreso se registra a mano.
 - Finanzas: no hay forma de reasignar la sede de un usuario desde el portal financiero; se hace desde el superadministrador con **Editar**.
 - Finanzas: revisión visual en el navegador de las pantallas nuevas (solo se probó con pruebas automáticas).
