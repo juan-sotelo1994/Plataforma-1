@@ -1,0 +1,161 @@
+"""Matrícula financiera: recibos de pago en PDF que sube el estudiante y revisa el administrador.
+
+Un recibo corresponde a una modalidad (mensualidad, trimestral o semestral) de un periodo.
+Si el estudiante sube otro para la misma modalidad y periodo, reemplaza al anterior.
+"""
+import datetime
+import os
+import re
+import uuid
+
+from werkzeug.utils import secure_filename
+
+from nucleo.auditoria import registrar
+from nucleo.db import get_db
+
+
+# Fuera de static/: los recibos no se abren por una URL pública
+RECIBOS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads', 'recibos_matricula')
+TAMANO_MAX_RECIBO = 5 * 1024 * 1024  # 5 MB
+
+MODALIDADES = {
+    'mensualidad': 'Mensualidad',
+    'trimestral': 'Trimestral',
+    'semestral': 'Semestral',
+}
+ESTADOS = {'pendiente': 'Pendiente', 'aprobado': 'Aprobado', 'rechazado': 'Rechazado'}
+
+# Periodos como 2026-1 o 2026-B
+PATRON_PERIODO = re.compile(r'^\d{4}-[A-Za-z0-9]{1,4}$')
+
+ESQUEMA_RECIBOS = """
+CREATE TABLE IF NOT EXISTS recibos_matricula (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    estudiante_id INTEGER NOT NULL REFERENCES estudiantes(id) ON DELETE CASCADE,
+    modalidad TEXT NOT NULL CHECK (modalidad IN ('mensualidad', 'trimestral', 'semestral')),
+    periodo TEXT NOT NULL,
+    fecha_pago TEXT NOT NULL,
+    nombre_original TEXT NOT NULL,
+    nombre_archivo TEXT NOT NULL,
+    subido_en TEXT NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'aprobado', 'rechazado')),
+    observacion TEXT,
+    UNIQUE (estudiante_id, modalidad, periodo)
+)
+"""
+
+
+def asegurar(db):
+    """La tabla se crea sola: las bases de las sedes que ya existían también la reciben."""
+    db.execute(ESQUEMA_RECIBOS)
+
+
+# Extensiones permitidas y la firma inicial de cada tipo de archivo
+FIRMAS = {
+    'pdf': [b'%PDF-'],
+    'jpg': [b'\xff\xd8\xff'],
+    'jpeg': [b'\xff\xd8\xff'],
+    'png': [b'\x89PNG\r\n\x1a\n'],
+}
+
+
+def guardar_recibo(estudiante_id, modalidad, periodo, fecha_pago, archivo):
+    """Devuelve (True, mensaje) si el recibo quedó pendiente de revisión, o (False, error)."""
+    if modalidad not in MODALIDADES:
+        return False, 'Seleccione la modalidad de pago.'
+    if not PATRON_PERIODO.match(periodo):
+        return False, 'Escriba el periodo, por ejemplo 2026-1.'
+    try:
+        fecha = datetime.date.fromisoformat(fecha_pago)
+    except ValueError:
+        return False, 'Escriba la fecha de pago.'
+    if fecha > datetime.date.today():
+        return False, 'La fecha de pago no puede ser futura.'
+    if archivo is None or not archivo.filename:
+        return False, 'Seleccione el recibo (PDF, JPG o PNG).'
+
+    nombre = secure_filename(archivo.filename)
+    extension = nombre.rsplit('.', 1)[-1].lower() if '.' in nombre else ''
+    if extension not in FIRMAS:
+        return False, 'El recibo debe ser un PDF, JPG o PNG.'
+    contenido = archivo.read(TAMANO_MAX_RECIBO + 1)
+    if len(contenido) > TAMANO_MAX_RECIBO:
+        return False, 'El archivo supera el tamaño máximo de 5 MB.'
+    if not any(contenido.startswith(firma) for firma in FIRMAS[extension]):
+        return False, 'El archivo no es un PDF, JPG o PNG válido.'
+
+    db = get_db()
+    asegurar(db)
+    os.makedirs(RECIBOS_DIR, exist_ok=True)
+    nombre_en_disco = f'{uuid.uuid4().hex}.{extension}'
+    with open(os.path.join(RECIBOS_DIR, nombre_en_disco), 'wb') as salida:
+        salida.write(contenido)
+
+    anterior = db.execute(
+        'SELECT nombre_archivo FROM recibos_matricula WHERE estudiante_id = ? AND modalidad = ? AND periodo = ?',
+        (estudiante_id, modalidad, periodo)).fetchone()
+    db.execute(
+        "INSERT INTO recibos_matricula (estudiante_id, modalidad, periodo, fecha_pago, nombre_original, "
+        "nombre_archivo, subido_en) VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime')) "
+        "ON CONFLICT (estudiante_id, modalidad, periodo) DO UPDATE SET fecha_pago = excluded.fecha_pago, "
+        "nombre_original = excluded.nombre_original, nombre_archivo = excluded.nombre_archivo, "
+        "subido_en = excluded.subido_en, estado = 'pendiente', observacion = NULL",
+        (estudiante_id, modalidad, periodo, fecha.isoformat(), nombre, nombre_en_disco))
+    registrar(db, 'recibo_subido', f'estudiante id {estudiante_id}: {MODALIDADES[modalidad]} {periodo}')
+    db.commit()
+
+    if anterior:
+        try:
+            os.remove(os.path.join(RECIBOS_DIR, anterior['nombre_archivo']))
+        except OSError:
+            pass
+    return True, 'Recibo cargado. Quedó pendiente de revisión por la administración.'
+
+
+def recibos_del_estudiante(estudiante_id):
+    db = get_db()
+    asegurar(db)
+    return db.execute(
+        'SELECT id, modalidad, periodo, fecha_pago, nombre_original, subido_en, estado, observacion '
+        'FROM recibos_matricula WHERE estudiante_id = ? ORDER BY periodo DESC, modalidad',
+        (estudiante_id,)).fetchall()
+
+
+def recibo_del_estudiante(recibo_id, estudiante_id):
+    db = get_db()
+    asegurar(db)
+    return db.execute(
+        'SELECT nombre_original, nombre_archivo FROM recibos_matricula WHERE id = ? AND estudiante_id = ?',
+        (recibo_id, estudiante_id)).fetchone()
+
+
+def estudiantes_con_matricula(busqueda=''):
+    """Todos los estudiantes con su recibo de matrícula financiera. Sin recibo, aparecen en una sola fila."""
+    db = get_db()
+    asegurar(db)
+    patron = f'%{busqueda}%'
+    return db.execute(
+        "SELECT e.id AS estudiante_id, e.codigo, e.nombres, e.apellidos, e.documento, "
+        "r.id AS recibo_id, r.modalidad, r.periodo, r.fecha_pago, r.nombre_original, r.estado, r.observacion "
+        "FROM estudiantes e LEFT JOIN recibos_matricula r ON r.estudiante_id = e.id "
+        "WHERE ? = '' OR e.nombres LIKE ? OR e.apellidos LIKE ? OR e.documento LIKE ? OR e.codigo LIKE ? "
+        "ORDER BY e.apellidos, e.nombres, r.periodo DESC, r.modalidad",
+        (busqueda, patron, patron, patron, patron)).fetchall()
+
+
+def revisar_recibo(recibo_id, estado, observacion):
+    """Devuelve (True, mensaje) o (False, error). Rechazar exige un motivo para el estudiante."""
+    if estado not in ('aprobado', 'rechazado'):
+        return False, 'Seleccione si el recibo se aprueba o se rechaza.'
+    if estado == 'rechazado' and not observacion:
+        return False, 'Escriba el motivo del rechazo para que el estudiante lo vea.'
+    db = get_db()
+    asegurar(db)
+    cursor = db.execute(
+        'UPDATE recibos_matricula SET estado = ?, observacion = ? WHERE id = ?',
+        (estado, observacion if estado == 'rechazado' else None, recibo_id))
+    if not cursor.rowcount:
+        return False, 'El recibo no existe.'
+    registrar(db, 'recibo_revisado', f'recibo id {recibo_id}: {estado}')
+    db.commit()
+    return True, f'Recibo {ESTADOS[estado].lower()}.'

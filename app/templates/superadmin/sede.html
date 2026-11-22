@@ -26,6 +26,7 @@
                     <h3 class="grupo-titulo"><i class="fa-solid fa-building"></i>Sedes</h3>
                     <ul>
                         <li><a href="{{ url_for('superadmin.inicio') }}"><i class="fa-solid fa-building"></i>Sedes y administradores</a></li>
+                        <li><a href="{{ url_for('superadmin.monitoreo') }}"><i class="fa-solid fa-chart-line"></i>Monitoreo general</a></li>
                     </ul>
                 </section>
             </nav>
@@ -55,7 +56,7 @@
                 <p class="ayuda" style="margin:0 0 14px;">Vista de solo lectura. Para cambiar datos, ingrese con el administrador de esta sede.</p>
 
                 <nav style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
-                    {% set pestanas = [('resumen', 'Resumen'), ('estudiantes', 'Estudiantes'), ('docentes', 'Docentes'), ('cursos', 'Cursos'), ('aspirantes', 'Aspirantes')] %}
+                    {% set pestanas = [('resumen', 'Resumen'), ('estudiantes', 'Estudiantes'), ('docentes', 'Docentes'), ('cursos', 'Cursos'), ('horarios', 'Horarios'), ('avances', 'Avances'), ('aspirantes', 'Aspirantes'), ('auditoria', 'Auditoría')] %}
                     {% for clave, etiqueta in pestanas %}
                     <a href="{{ url_for('superadmin.ver_sede', sede_id=sede.id, seccion=clave) }}"
                        class="boton-admin {% if seccion == clave %}boton-admin-primario{% endif %}">{{ etiqueta }}</a>
@@ -85,6 +86,17 @@
                 {% else %}
                 <section class="bloque-admin">
                     <h2>{{ titulo }} <span class="contador">({{ filas|length }})</span></h2>
+                    {% if seccion == 'auditoria' %}
+                    <form method="get" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                        <input type="hidden" name="seccion" value="auditoria">
+                        <input type="search" name="q" value="{{ q }}" placeholder="Buscar por usuario, acción o detalle" style="max-width:360px;">
+                        <button type="submit" class="boton-admin">Buscar</button>
+                    </form>
+                    <p class="ayuda" style="margin:0 0 10px;">Últimos 500 movimientos de esta sede, del más reciente al más antiguo.</p>
+                    {% endif %}
+                    {% if seccion == 'avances' %}
+                    <p class="ayuda" style="margin:0 0 10px;">Avance = estudiantes con nota final ÷ estudiantes matriculados en cada materia.</p>
+                    {% endif %}
                     {% if filas %}
                     <div class="tabla-contenedor">
                         <table class="tabla-admin">

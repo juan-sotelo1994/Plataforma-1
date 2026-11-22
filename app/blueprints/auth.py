@@ -4,6 +4,7 @@ import os
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 
+from nucleo.auditoria import registrar
 from nucleo.sedes import RUTA_CENTRAL, conectar, listar_sedes, ruta_sede
 from nucleo.seguridad import destino_por_rol
 
@@ -74,6 +75,15 @@ def _autenticar(correo, contrasena):
     return None, None, None
 
 
+def _registrar_ingreso(archivo, correo):
+    conexion = conectar(ruta_sede(archivo))
+    try:
+        registrar(conexion, 'ingreso', 'Inició sesión', usuario=correo)
+        conexion.commit()
+    finally:
+        conexion.close()
+
+
 @autenticar.route('/ingresar', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -87,6 +97,7 @@ def login():
             session['persona_id'] = persona_id
             if sede:
                 session['sede_archivo'], session['sede_nombre'] = sede
+                _registrar_ingreso(sede[0], correo)
             return redirect(destino_por_rol(rol))
         flash('Correo o contraseña incorrectos.', 'error')
         return redirect(url_for('autenticar.login'))

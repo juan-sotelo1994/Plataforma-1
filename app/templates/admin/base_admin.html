@@ -63,6 +63,13 @@
                     </ul>
                 </details>
 
+                <section class="grupo">
+                    <h3 class="grupo-titulo"><i class="fa-solid fa-receipt"></i>Matrícula financiera</h3>
+                    <ul>
+                        <li><a href="{{ url_for('admin.pagos_matricula') }}"><i class="fa-solid fa-users"></i>Estudiantes y recibos</a></li>
+                    </ul>
+                </section>
+
                 <details class="grupo desplegable" {% if entidad in ['aspirantes', 'requisitos', 'matriculas'] %}open{% endif %}>
                     <summary class="grupo-titulo"><i class="fa-solid fa-user-plus"></i>Aspirantes y matrículas</summary>
                     <ul>
