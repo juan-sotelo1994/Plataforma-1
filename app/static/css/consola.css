@@ -871,3 +871,15 @@ h1, h2, h3 { font-weight: 600; color: var(--text); }
     .detalle, .detalle-encuesta { margin-left: 18px; }
     .formulario-admin { grid-template-columns: 1fr; }
 }
+
+/* Barra de filtros de las listas */
+.barra-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; padding: 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.barra-filtros select, .barra-filtros .filtro-busqueda input { height: 38px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; font: inherit; font-size: 14px; padding: 0 12px; color: #0f172a; }
+.barra-filtros select { min-width: 200px; }
+.barra-filtros .filtro-busqueda { position: relative; flex: 1 1 260px; display: flex; align-items: center; margin: 0; }
+.barra-filtros .filtro-busqueda i { position: absolute; left: 12px; color: #94a3b8; font-size: 14px; pointer-events: none; }
+.barra-filtros .filtro-busqueda input { width: 100%; padding-left: 36px; box-sizing: border-box; }
+.barra-filtros select:focus, .barra-filtros input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, .15); }
+.barra-filtros .boton-admin { height: 38px; }
+.barra-filtros .filtro-limpiar { font-size: 14px; color: #475569; }
+@media (max-width: 720px) { .barra-filtros select, .barra-filtros .filtro-busqueda { flex: 1 1 100%; width: 100%; } }

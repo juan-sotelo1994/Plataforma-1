@@ -1,3 +1,4 @@
+{% from '_filtros.html' import barra_filtros %}
 {% extends 'admin/base_admin.html' %}
 
 {% block title %}{{ config.titulo }}{% endblock %}
@@ -61,14 +62,19 @@
         <a href="{{ url_for('admin.exportar_estudiantes') }}" class="boton-admin" style="margin-left:8px;"><i class="fa-solid fa-file-export"></i> Exportar CSV</a>
         <button type="button" class="boton-admin" data-abrir="ventana-importar" style="margin-left:8px;"><i class="fa-solid fa-file-import"></i> Importar CSV</button>
         {% endif %}
+        {% if not config.filtros %}
         <input type="search" id="buscar-registros" placeholder="Buscar en la lista…" autocomplete="off"
                style="margin-left:auto; width:260px; height:36px; padding:0 12px; border:1px solid #cbd5e1; border-radius:8px; font:inherit; font-size:14px; font-weight:400;">
+        {% endif %}
         {% if not config.solo_lectura %}
         <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-crear">
             <i class="fa-solid fa-plus"></i> Nuevo {{ config.singular }}
         </button>
         {% endif %}
     </h2>
+    {% if config.filtros %}
+    {{ barra_filtros(cursos, jornadas, buscar_id='buscar-registros') }}
+    {% endif %}
 
     {% if filas %}
     <div class="tabla-contenedor">
@@ -81,7 +87,7 @@
             </thead>
             <tbody>
                 {% for fila in filas %}
-                <tr class="fila-registro">
+                <tr class="fila-registro"{% if config.filtros %} data-curso="{{ fila['cursos_ids'] or '' }}" data-jornada="{{ fila['jornada_id'] or '' }}"{% endif %}>
                     {% for _, clave in config.columnas %}<td>{{ fila[clave] if fila[clave] not in (None, '') else '—' }}</td>{% endfor %}
                     <td class="col-acciones">
                         {% if not config.solo_lectura %}
@@ -266,18 +272,36 @@
 {% endif %}
 
 <script>
-    // Buscador de la lista: oculta las filas que no contienen el texto (sin distinguir tildes)
+    // Buscador y filtros de la lista: texto (sin distinguir tildes), curso y jornada a la vez
     (function () {
         var buscar = document.getElementById('buscar-registros');
+        var curso = document.getElementById('filtro-curso');
+        var jornada = document.getElementById('filtro-jornada');
+        var limpiar = document.getElementById('filtro-limpiar');
         if (!buscar) return;
         function normal(texto) {
             return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
         }
-        buscar.addEventListener('input', function () {
+        function aplicar() {
             var texto = normal(buscar.value.trim());
+            var cursoSel = curso ? curso.value : '';
+            var jornadaSel = jornada ? jornada.value : '';
             document.querySelectorAll('tr.fila-registro').forEach(function (fila) {
-                fila.style.display = normal(fila.textContent).indexOf(texto) !== -1 ? '' : 'none';
+                var coincide = normal(fila.textContent).indexOf(texto) !== -1;
+                if (coincide && cursoSel) coincide = (fila.dataset.curso || '').split(',').indexOf(cursoSel) !== -1;
+                if (coincide && jornadaSel) coincide = fila.dataset.jornada === jornadaSel;
+                fila.style.display = coincide ? '' : 'none';
             });
+        }
+        buscar.addEventListener('input', aplicar);
+        [curso, jornada].forEach(function (control) {
+            if (control) control.addEventListener('change', aplicar);
+        });
+        if (limpiar) limpiar.addEventListener('click', function () {
+            buscar.value = '';
+            if (curso) curso.value = '';
+            if (jornada) jornada.value = '';
+            aplicar();
         });
     })();
 </script>

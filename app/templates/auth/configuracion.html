@@ -1,0 +1,37 @@
+{% from '_alertas.html' import modal_errores, modal_avisos %}
+{% extends base %}
+
+{% block title %}Configuración{% endblock %}
+
+{% block content %}
+
+<h1>Configuración</h1>
+<p>Cuenta: <strong>{{ correo }}</strong> · {{ etiqueta_rol }}</p>
+
+<form method="post" action="{{ url_for('autenticar.configuracion') }}" class="bloque-admin bloque-formulario" novalidate>
+    <section>
+        <h2>Cambiar contraseña</h2>
+        <div class="formulario-admin">
+            <label class="form-field">
+                <span>Contraseña actual <small>*</small></span>
+                <input type="password" name="actual" autocomplete="current-password" required>
+            </label>
+            <label class="form-field">
+                <span>Nueva contraseña <small>* (mínimo 6 caracteres)</small></span>
+                <input type="password" name="nueva" minlength="6" autocomplete="new-password" required>
+            </label>
+            <label class="form-field">
+                <span>Confirmar nueva contraseña <small>*</small></span>
+                <input type="password" name="confirmacion" minlength="6" autocomplete="new-password" required>
+            </label>
+        </div>
+        {% if rol == 'superadmin' %}
+        <p class="ayuda" style="margin:12px 0 0;">Después de cambiarla, la nueva contraseña reemplaza a la que estaba en el archivo <code>.env</code>.</p>
+        {% endif %}
+    </section>
+    <div class="acciones-form" style="padding:18px 22px;">
+        <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-key"></i> Guardar nueva contraseña</button>
+    </div>
+</form>
+
+{% endblock %}

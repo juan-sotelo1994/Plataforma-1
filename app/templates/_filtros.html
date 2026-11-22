@@ -1,0 +1,35 @@
+{#
+  Barra de filtros común de las listas: búsqueda, curso y jornada.
+  servidor=True: es un formulario GET que filtra en el servidor.
+  servidor=False: filtra en la misma página con JavaScript (la lista ya trae los datos).
+#}
+{% macro barra_filtros(cursos, jornadas, q='', curso_sel=None, jornada_sel=None, action='', buscar_id='', servidor=False) -%}
+{% if servidor %}<form method="get" action="{{ action }}" class="barra-filtros">{% else %}<div class="barra-filtros">{% endif %}
+    <label class="filtro-busqueda">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        {% if servidor %}
+        <input type="search" name="q" value="{{ q }}" placeholder="Nombre, apellido, documento o código" autocomplete="off">
+        {% else %}
+        <input type="search" id="{{ buscar_id }}" placeholder="Nombre, apellido, documento o código" autocomplete="off">
+        {% endif %}
+    </label>
+    <select {% if servidor %}name="curso"{% else %}id="filtro-curso"{% endif %} aria-label="Filtrar por curso">
+        <option value="">Todos los cursos</option>
+        {% for curso in cursos %}
+        <option value="{{ curso.id }}" {% if curso.id == curso_sel %}selected{% endif %}>{{ curso.grupo }} · {{ curso.periodo }}</option>
+        {% endfor %}
+    </select>
+    <select {% if servidor %}name="jornada"{% else %}id="filtro-jornada"{% endif %} aria-label="Filtrar por jornada">
+        <option value="">Todas las jornadas</option>
+        {% for jornada in jornadas %}
+        <option value="{{ jornada.id }}" {% if jornada.id == jornada_sel %}selected{% endif %}>{{ jornada.nombre }}</option>
+        {% endfor %}
+    </select>
+    {% if servidor %}
+    <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-filter"></i> Filtrar</button>
+    {% if q or curso_sel or jornada_sel %}<a class="filtro-limpiar" href="{{ action }}">Limpiar</a>{% endif %}
+    {% else %}
+    <button type="button" class="boton-admin" id="filtro-limpiar"><i class="fa-solid fa-rotate-left"></i> Limpiar</button>
+    {% endif %}
+{% if servidor %}</form>{% else %}</div>{% endif %}
+{%- endmacro %}

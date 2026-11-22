@@ -87,6 +87,7 @@
                         <th scope="col">{{ criterio.nombre }} <small>({{ '%g' % criterio.porcentaje }} %)</small></th>
                         {% endfor %}
                         <th scope="col">Definitiva</th>
+                        <th scope="col">Observación del docente</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -102,6 +103,10 @@
                         </td>
                         {% endfor %}
                         <td><strong>{{ '%.2f' % estudiante.definitiva if estudiante.definitiva is not none else '—' }}</strong></td>
+                        <td>
+                            <input type="text" name="obs_{{ estudiante.id }}" value="{{ estudiante.observacion }}" maxlength="300"
+                                   placeholder="Opcional" style="width:220px; height:34px;" {% if not puede_editar %}disabled{% endif %}>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>

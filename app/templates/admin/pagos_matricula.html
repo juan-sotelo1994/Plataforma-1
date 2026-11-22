@@ -1,3 +1,4 @@
+{% from '_filtros.html' import barra_filtros %}
 {% extends 'admin/base_admin.html' %}
 
 {% block title %}Matrícula financiera{% endblock %}
@@ -7,10 +8,7 @@
 <h1>Matrícula financiera</h1>
 <p>Estudiantes con su recibo de matrícula financiera. Revise cada recibo y apruebe o rechace el pago. Si lo rechaza, el estudiante verá el motivo.</p>
 
-<form method="get" action="{{ url_for('admin.pagos_matricula') }}" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
-    <input type="search" name="q" value="{{ q }}" placeholder="Buscar por nombre, apellido, documento o código" style="max-width:420px;">
-    <button type="submit" class="boton-admin">Buscar</button>
-</form>
+{{ barra_filtros(cursos, jornadas, q=q, curso_sel=curso_sel, jornada_sel=jornada_sel, action=url_for('admin.pagos_matricula'), servidor=True) }}
 
 <section class="bloque-admin">
     <h2>Estudiantes <span class="contador">({{ registros|length }})</span></h2>
@@ -22,6 +20,7 @@
                     <th scope="col">Nombres</th>
                     <th scope="col">Apellidos</th>
                     <th scope="col">Documento</th>
+                    <th scope="col">Curso</th>
                     <th scope="col">Periodo</th>
                     <th scope="col">Modalidad</th>
                     <th scope="col">Estado de la matrícula</th>
@@ -36,6 +35,7 @@
                     <td>{{ fila.nombres }}</td>
                     <td>{{ fila.apellidos }}</td>
                     <td>{{ fila.documento }}<br><span class="ayuda">{{ fila.codigo }}</span></td>
+                    <td>{{ fila.cursos or '—' }}</td>
                     {% if fila.recibo_id is none %}
                     <td>—</td>
                     <td>—</td>

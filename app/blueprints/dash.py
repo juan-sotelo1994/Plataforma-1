@@ -1,10 +1,11 @@
 import datetime
 
-from flask import (Blueprint, abort, flash, redirect, render_template, request, send_from_directory,
+from flask import (Blueprint, abort, flash, redirect, render_template, request, send_file, send_from_directory,
                    session, url_for)
 
 from nucleo.db import get_db
 from servicios import matricula_financiera as mf
+from servicios import fotos, reporte_notas
 from servicios.geografia import DEPARTAMENTOS
 from nucleo.seguridad import requiere_rol
 
@@ -25,8 +26,8 @@ MENU_GRUPOS = [
         {'texto': 'Actualizar mis datos', 'url': '/panel/datos'},
     ]},
     {'titulo': 'Académico', 'enlaces': [
-        {'texto': 'Notas (PDF)', 'url': '#'},
-        {'texto': 'Notas', 'url': '#'},
+        {'texto': 'Notas (PDF)', 'url': '/panel/notas/pdf'},
+        {'texto': 'Notas', 'url': '/panel/notas'},
         {'texto': 'Estatuto estudiantil', 'url': '#'},
     ]},
     {'titulo': 'Trámites', 'enlaces': [
@@ -55,11 +56,12 @@ def _datos_estudiante(estudiante_id):
 
 def _cursos_del_estudiante(estudiante_id):
     return get_db().execute(
-        "SELECT c.id AS curso_id, m.nombre AS materia, m.creditos, c.grupo, c.periodo, c.horario, "
+        "SELECT c.id AS curso_id, m.id AS materia_id, m.nombre AS materia, m.codigo, m.creditos, c.grupo, c.periodo, c.horario, "
         "COALESCE(d.nombres || ' ' || d.apellidos, 'Sin asignar') AS docente, j.nombre AS jornada, "
-        "k.nota AS nota, ev.puntuacion AS evaluacion "
+        "k.nota AS nota, ev.puntuacion AS evaluacion, g.ciclo AS ciclo "
         "FROM matriculas mt "
         "JOIN cursos c ON c.id = mt.curso_id "
+        "LEFT JOIN grupos_curso g ON g.id = c.grupo_id "
         "JOIN materias m ON m.id = c.materia_id "
         "LEFT JOIN docentes d ON d.id = c.docente_id "
         "JOIN jornadas j ON j.id = c.jornada_id "
@@ -158,7 +160,24 @@ def datos():
     estudiante = db.execute('SELECT * FROM estudiantes WHERE id = ?', (estudiante_id,)).fetchone()
     return render_template('panel/datos.html', estudiante=estudiante, usuario=estudiante,
                            grupos=MENU_GRUPOS, departamentos=DEPARTAMENTOS,
-                           obligatorios=OBLIGATORIOS_DATOS_ESTUDIANTE)
+                           obligatorios=OBLIGATORIOS_DATOS_ESTUDIANTE, tiene_foto=fotos.tiene_foto(estudiante_id))
+
+
+@dashboard_bp.route('/foto', methods=['POST'])
+@requiere_rol('estudiante')
+def subir_foto():
+    ok, mensaje = fotos.guardar_foto(session['persona_id'], request.files.get('foto'))
+    flash(mensaje, 'ok' if ok else 'error')
+    return redirect(url_for('dashboard.datos'))
+
+
+@dashboard_bp.route('/foto/ver')
+@requiere_rol('estudiante')
+def ver_foto():
+    ruta = fotos.ruta_foto(session['persona_id'])
+    if ruta is None:
+        abort(404)
+    return send_file(ruta)
 
 
 @dashboard_bp.route('/matricula', methods=['GET', 'POST'])
@@ -186,3 +205,45 @@ def descargar_recibo(recibo_id):
         abort(404)
     return send_from_directory(mf.RECIBOS_DIR, recibo['nombre_archivo'], as_attachment=True,
                                download_name=recibo['nombre_original'])
+
+
+@dashboard_bp.route('/notas')
+@requiere_rol('estudiante')
+def notas():
+    """Notas por criterio de cada curso: lo que el docente ya publicó y lo que todavía está pendiente."""
+    estudiante_id = session['persona_id']
+    db = get_db()
+    cursos = _cursos_del_estudiante(estudiante_id)
+    periodos = sorted({curso['periodo'] for curso in cursos}, reverse=True)
+    periodo = request.args.get('periodo', '')
+    # Cuántas veces ha cursado cada materia (incluye el periodo actual)
+    veces = {fila['materia_id']: fila['veces'] for fila in db.execute(
+        'SELECT c.materia_id, COUNT(*) AS veces FROM matriculas mt JOIN cursos c ON c.id = mt.curso_id '
+        'WHERE mt.estudiante_id = ? GROUP BY c.materia_id', (estudiante_id,)).fetchall()}
+    detalle = []
+    for curso in cursos if periodo in periodos else []:
+        if curso['periodo'] != periodo:
+            continue
+        criterios = db.execute(
+            'SELECT cr.id, cr.nombre, cr.porcentaje, k.nota FROM criterios_evaluacion cr '
+            'LEFT JOIN notas_criterio k ON k.criterio_id = cr.id AND k.estudiante_id = ? '
+            'WHERE cr.curso_id = ? ORDER BY cr.orden, cr.id',
+            (estudiante_id, curso['curso_id'])).fetchall()
+        detalle.append({'curso': curso, 'criterios': criterios, 'veces': veces.get(curso['materia_id'], 1)})
+    # Promedio parcial: promedio simple de las definitivas del periodo (solo las ya calificadas)
+    definitivas = [bloque['curso']['nota'] for bloque in detalle if bloque['curso']['nota'] is not None]
+    promedio_parcial = round(sum(definitivas) / len(definitivas), 2) if definitivas else None
+    return render_template('panel/notas.html', usuario=_datos_estudiante(estudiante_id), detalle=detalle,
+                           periodos=periodos, periodo=periodo if periodo in periodos else '',
+                           promedio_parcial=promedio_parcial,
+                           grupos=MENU_GRUPOS, nota_aprobatoria=NOTA_APROBATORIA)
+
+
+@dashboard_bp.route('/notas/pdf')
+@requiere_rol('estudiante')
+def notas_pdf():
+    """Reporte de calificaciones del estudiante en PDF, abierto en el navegador."""
+    db = get_db()
+    estudiante = _datos_estudiante(session['persona_id'])
+    pdf = reporte_notas.generar(db, estudiante, session.get('sede_nombre', ''))
+    return send_file(pdf, mimetype='application/pdf', download_name=f'notas_{estudiante["codigo"]}.pdf')

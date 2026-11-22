@@ -1,0 +1,202 @@
+{% extends 'panel/base_panel.html' %}
+
+{% block title %}Mis notas{% endblock %}
+
+{% block content %}
+
+<style>
+    .asignatura { border: 1px solid #cbd5e1; border-radius: 10px; overflow: hidden; background: #fff; margin-bottom: 18px; }
+    .asignatura-cabecera { background: #0b3a44; color: #fff; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; flex-wrap: wrap; }
+    .asignatura-cabecera strong { font-size: 15px; font-weight: 600; }
+    .asignatura table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .asignatura th, .asignatura td { padding: 10px 12px; border-top: 1px solid #e2e8f0; text-align: center; }
+    .asignatura thead th { font-weight: 700; color: #0f172a; background: #f8fafc; }
+    .asignatura .modalidad { text-align: left; }
+    .etiqueta-porcentaje { display: inline-block; margin-left: 8px; background: #16a34a; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+    .asignatura tfoot td { font-weight: 700; background: #f1f5f9; padding: 12px; }
+    .nota-celda { display: inline-block; min-width: 40px; border-radius: 6px; padding: 3px 8px; font-weight: 700; }
+    .nota-ok { background: #dcfce7; color: #166534; }
+    .nota-baja { background: #fee2e2; color: #b91c1c; }
+    .nota-pendiente { background: #e2e8f0; color: #475569; font-weight: 600; font-size: 12px; }
+    .boton-ver-mas { background: #f59e0b; color: #111827; border: 0; font: inherit; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 6px; cursor: pointer; }
+    .desglose { padding: 14px 16px 18px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+    .desglose[hidden] { display: none; }
+    .desglose .ayuda { margin: 10px 0 0; }
+    @media print { .barra-periodo, .boton-ver-mas { display: none !important; } .desglose { display: block !important; } }
+</style>
+
+<h1>Mis notas</h1>
+
+<form method="get" action="{{ url_for('dashboard.notas') }}" class="bloque-admin barra-periodo" style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; padding:14px 18px; margin-bottom:18px;">
+    <label class="form-field" style="min-width:280px;">
+        <span>Periodo académico <small>*</small></span>
+        <select name="periodo" required>
+            <option value="">— Seleccione el periodo —</option>
+            {% for p in periodos %}
+            <option value="{{ p }}" {% if p == periodo %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-magnifying-glass"></i> Consultar notas</button>
+    {% if periodo and detalle %}
+    <button type="button" class="boton-admin" onclick="window.print()"><i class="fa-solid fa-print"></i> Imprimir</button>
+    {% endif %}
+</form>
+
+{% if not periodos %}
+<p class="vacio">Todavía no está matriculado en ningún curso.</p>
+{% elif not periodo %}
+<p class="vacio">Seleccione un periodo para consultar sus notas.</p>
+{% elif not detalle %}
+<p class="vacio">No tiene materias registradas en el periodo {{ periodo }}.</p>
+{% endif %}
+
+{% if detalle %}
+<section class="bloque-admin" style="margin-bottom:18px;">
+    <h2>Resumen del periodo {{ periodo }}</h2>
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead>
+                <tr>
+                    <th scope="col">Código</th>
+                    <th scope="col">Materia</th>
+                    <th scope="col">Ciclo</th>
+                    <th scope="col">Nota definitiva</th>
+                    <th scope="col">No. veces</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for bloque in detalle %}
+                <tr>
+                    <td>{{ bloque.curso.codigo or '—' }}</td>
+                    <td>{{ bloque.curso.materia }}</td>
+                    <td>{{ bloque.curso.ciclo or '—' }}</td>
+                    <td>
+                        {% if bloque.curso.nota is none %}
+                        <span class="nota-celda nota-pendiente">Pendiente</span>
+                        {% elif bloque.curso.nota >= nota_aprobatoria %}
+                        <span class="nota-celda nota-ok">{{ '%.2f' % bloque.curso.nota }}</span>
+                        {% else %}
+                        <span class="nota-celda nota-baja">{{ '%.2f' % bloque.curso.nota }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ bloque.veces }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="3" style="text-align:left; font-weight:700;">PROMEDIO PARCIAL</td>
+                    <td style="font-weight:700;">{{ '%.2f' % promedio_parcial if promedio_parcial is not none else 'Pendiente' }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+{% for bloque in detalle %}
+<article class="asignatura">
+    <header class="asignatura-cabecera">
+        <strong>Asignatura: {{ bloque.curso.materia }}</strong>
+        <span style="font-size:13px; opacity:.85;">Ciclo {{ bloque.curso.ciclo or '—' }}</span>
+        <button type="button" class="boton-ver-mas" data-alternar="desglose-{{ loop.index }}">Ver más</button>
+    </header>
+
+    <table>
+        <thead>
+            <tr>
+                <th scope="col">Modalidad</th>
+                <th scope="col">Grupo</th>
+                <th scope="col">Docente(s)</th>
+                <th scope="col">Calificación</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for criterio in bloque.criterios %}
+            <tr>
+                <td class="modalidad">{{ criterio.nombre }}<span class="etiqueta-porcentaje">{{ '%g' % criterio.porcentaje }}%</span></td>
+                <td>{{ bloque.curso.grupo }}</td>
+                <td>{{ bloque.curso.docente }}</td>
+                <td>
+                    {% if criterio.nota is none %}
+                    <span class="nota-celda nota-pendiente">Pendiente</span>
+                    {% elif criterio.nota >= nota_aprobatoria %}
+                    <span class="nota-celda nota-ok">{{ '%.1f' % criterio.nota }}</span>
+                    {% else %}
+                    <span class="nota-celda nota-baja">{{ '%.1f' % criterio.nota }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="vacio">El docente todavía no ha creado los criterios de evaluación de este curso.</td></tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="3" style="text-align:left;">Calificación definitiva</td>
+                <td>
+                    {% if bloque.curso.nota is none %}
+                    <span class="nota-celda nota-pendiente">Pendiente</span>
+                    {% elif bloque.curso.nota >= nota_aprobatoria %}
+                    <span class="nota-celda nota-ok">{{ '%.1f' % bloque.curso.nota }}</span>
+                    {% else %}
+                    <span class="nota-celda nota-baja">{{ '%.1f' % bloque.curso.nota }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div id="desglose-{{ loop.index }}" class="desglose" hidden>
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Estrategia</th>
+                    <th scope="col">Porcentaje</th>
+                    <th scope="col">Nota</th>
+                    <th scope="col">Aporte a la definitiva</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set ns = namespace(acumulado=0) %}
+                {% for criterio in bloque.criterios %}
+                <tr>
+                    <td class="modalidad">{{ criterio.nombre }}</td>
+                    <td>{{ '%g' % criterio.porcentaje }} %</td>
+                    {% if criterio.nota is none %}
+                    <td><span class="nota-celda nota-pendiente">Pendiente</span></td>
+                    <td>—</td>
+                    {% else %}
+                    {% set aporte = criterio.nota * criterio.porcentaje / 100 %}
+                    {% set ns.acumulado = ns.acumulado + aporte %}
+                    <td>{{ '%.2f' % criterio.nota }}</td>
+                    <td>{{ '%.2f' % aporte }}</td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="3" style="text-align:left;">Acumulado parcial</td>
+                    <td>{{ '%.2f' % ns.acumulado }}</td>
+                </tr>
+            </tfoot>
+        </table>
+        <p class="ayuda">Cada nota se multiplica por el porcentaje de su estrategia. La suma de esos aportes es la calificación definitiva.</p>
+    </div>
+</article>
+{% endfor %}
+
+<script>
+document.querySelectorAll('[data-alternar]').forEach(function (boton) {
+    boton.addEventListener('click', function () {
+        var panel = document.getElementById(boton.dataset.alternar);
+        var estabaOculto = panel.hasAttribute('hidden');
+        panel.toggleAttribute('hidden', !estabaOculto);
+        boton.textContent = estabaOculto ? 'Ocultar' : 'Ver más';
+    });
+});
+</script>
+
+{% endblock %}
