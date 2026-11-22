@@ -61,6 +61,9 @@ def curso(curso_id):
     curso = _curso_del_docente(curso_id)
 
     if request.method == 'POST':
+        if not notas.plazo_abierto(curso['periodo']):
+            flash(notas.PLAZO_CERRADO, 'error')
+            return redirect(url_for('docente.curso', curso_id=curso_id))
         ok, mensaje = notas.guardar_notas(curso_id, request.form)
         flash(mensaje, 'ok' if ok else 'error')
         return redirect(url_for('docente.curso', curso_id=curso_id))
@@ -72,13 +75,17 @@ def curso(curso_id):
         (curso_id,)).fetchone()
 
     return render_template('docente/curso.html', curso=curso, criterios=criterios, total=total,
-                           estudiantes=estudiantes, evaluacion=evaluacion, rutas=RUTAS_NOTAS)
+                           estudiantes=estudiantes, evaluacion=evaluacion, rutas=RUTAS_NOTAS,
+                           puede_editar=notas.plazo_abierto(curso['periodo']), aviso_plazo=notas.PLAZO_CERRADO)
 
 
 @docente_bp.route('/cursos/<int:curso_id>/criterios', methods=['POST'])
 @requiere_rol('docente')
 def agregar_criterio(curso_id):
-    _curso_del_docente(curso_id)
+    curso = _curso_del_docente(curso_id)
+    if not notas.plazo_abierto(curso['periodo']):
+        flash(notas.PLAZO_CERRADO, 'error')
+        return redirect(url_for('docente.curso', curso_id=curso_id))
     ok, mensaje = notas.agregar_criterio(curso_id, request.form.get('nombre'), request.form.get('porcentaje'))
     flash(mensaje, 'ok' if ok else 'error')
     return redirect(url_for('docente.curso', curso_id=curso_id))
@@ -87,7 +94,10 @@ def agregar_criterio(curso_id):
 @docente_bp.route('/cursos/<int:curso_id>/criterios/<int:criterio_id>/eliminar', methods=['POST'])
 @requiere_rol('docente')
 def eliminar_criterio(curso_id, criterio_id):
-    _curso_del_docente(curso_id)
+    curso = _curso_del_docente(curso_id)
+    if not notas.plazo_abierto(curso['periodo']):
+        flash(notas.PLAZO_CERRADO, 'error')
+        return redirect(url_for('docente.curso', curso_id=curso_id))
     notas.eliminar_criterio(curso_id, criterio_id)
     flash('Criterio eliminado. Las notas de ese criterio también se borraron.', 'ok')
     return redirect(url_for('docente.curso', curso_id=curso_id))

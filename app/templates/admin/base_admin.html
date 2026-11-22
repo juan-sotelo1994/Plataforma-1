@@ -83,7 +83,7 @@
                 <button class="menu-btn" id="menu-btn" aria-controls="sidebar" aria-expanded="false" aria-label="Mostrar menú">
                     <i class="fa-solid fa-bars"></i>
                 </button>
-                <span class="topbar-title">Administración</span>
+                <span class="topbar-title">Administración{% if session.sede_nombre %} · {{ session.sede_nombre }}{% endif %}</span>
                 <div class="topbar-usuario">
                     <span class="usuario-avatar"><i class="fa-solid fa-user-shield"></i></span>
                     <span class="correo">{{ session.usuario }}</span>

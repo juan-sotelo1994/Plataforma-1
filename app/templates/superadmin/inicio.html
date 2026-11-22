@@ -1,0 +1,150 @@
+{% from '_alertas.html' import modal_errores, modal_avisos, confirmar_js %}
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Superadministración | {{ empresa.nombre }}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/consola.css') }}">
+</head>
+
+<body>
+    <div class="panel" id="panel">
+        <aside class="sidebar" id="sidebar" aria-label="Menú del superadministrador">
+            <div class="sidebar-head">
+                <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="30" height="30">
+                <strong>{{ empresa.nombre }}</strong>
+            </div>
+            <nav class="sidebar-nav">
+                <section class="grupo">
+                    <h3 class="grupo-titulo"><i class="fa-solid fa-building"></i>Sedes</h3>
+                    <ul>
+                        <li><a href="{{ url_for('superadmin.inicio') }}"><i class="fa-solid fa-building"></i>Sedes y administradores</a></li>
+                    </ul>
+                </section>
+            </nav>
+            <div class="sidebar-foot">
+                <strong>SUPERADMIN</strong>
+                <span>v1.0</span>
+            </div>
+        </aside>
+
+        <div class="main">
+            <header class="topbar">
+                <span class="topbar-title">Superadministración</span>
+                <div class="topbar-usuario">
+                    <span class="correo">{{ session.usuario }}</span>
+                    <a href="{{ url_for('autenticar.logout') }}">CERRAR SESIÓN</a>
+                </div>
+            </header>
+
+            <main class="content">
+                {% with mensajes = get_flashed_messages(with_categories=true) %}
+                {{ modal_errores(mensajes) }}
+                {{ modal_avisos(mensajes) }}
+                {% endwith %}
+
+                <h1>Sedes</h1>
+                <p>Cree las sedes y el administrador de cada una. Cada sede administra sus propios datos.</p>
+
+                <section class="bloque-admin">
+                    <h2>Sedes <span class="contador">({{ sedes|length }})</span></h2>
+                    <form method="post" action="{{ url_for('superadmin.crear_sede') }}" style="display:flex; gap:10px; align-items:flex-end; margin-bottom:12px;">
+                        <label class="form-field" style="flex:1;">
+                            <span>Nombre de la sede</span>
+                            <input type="text" name="nombre" placeholder="Ipiales, Córdoba, Tuquerres, Pupiales…" required>
+                        </label>
+                        <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-plus"></i> Crear sede</button>
+                    </form>
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead><tr><th scope="col">Sede (puede editar el nombre)</th><th scope="col">Administradores</th><th scope="col">Ver</th></tr></thead>
+                            <tbody>
+                                {% for sede in sedes %}
+                                <tr>
+                                    <td>
+                                        <form method="post" action="{{ url_for('superadmin.editar_sede', sede_id=sede.id) }}" style="display:flex; gap:8px; align-items:center;">
+                                            <input type="text" name="nombre" value="{{ sede.nombre }}" required style="flex:1; height:34px; padding:0 10px; border:1px solid #cbd5e1; border-radius:8px; font:inherit;">
+                                            <button type="submit" class="boton-admin" style="height:34px;"><i class="fa-solid fa-pen"></i> Guardar</button>
+                                        </form>
+                                    </td>
+                                    <td>{{ admins|selectattr('sede_id', 'equalto', sede.id)|list|length }}</td>
+                                    <td><a href="{{ url_for('superadmin.ver_sede', sede_id=sede.id) }}" class="boton-admin" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-eye"></i> Ver sede</a></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="bloque-admin">
+                    <h2>Administradores de sede <span class="contador">({{ admins|length }})</span></h2>
+                    {% if sedes %}
+                    <form method="post" action="{{ url_for('superadmin.crear_administrador') }}" style="display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:10px; align-items:flex-end; margin-bottom:12px;">
+                        <label class="form-field">
+                            <span>Correo</span>
+                            <input type="email" name="correo" required>
+                        </label>
+                        <label class="form-field">
+                            <span>Contraseña inicial</span>
+                            <input type="password" name="contrasena" minlength="6" required autocomplete="new-password">
+                        </label>
+                        <label class="form-field">
+                            <span>Sede</span>
+                            <select name="sede_id" required>
+                                <option value="">— Seleccione —</option>
+                                {% for sede in sedes %}
+                                <option value="{{ sede.id }}">{{ sede.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <button type="submit" class="boton-admin boton-admin-primario"><i class="fa-solid fa-user-plus"></i> Crear</button>
+                    </form>
+                    {% endif %}
+                    {% if admins %}
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead><tr><th scope="col">Correo</th><th scope="col">Sede</th><th scope="col" class="col-acciones">Acciones</th></tr></thead>
+                            <tbody>
+                                {% for admin in admins %}
+                                <tr>
+                                    <td>{{ admin.correo }}</td>
+                                    <td>{{ admin.sede }}</td>
+                                    <td class="col-acciones">
+                                        <form method="post" action="{{ url_for('superadmin.eliminar_administrador', admin_id=admin.id) }}" style="display:inline;"
+                                              data-confirmar="El administrador perderá el acceso a su sede. Los datos de la sede se conservan."
+                                              data-confirmar-titulo="¿Eliminar este administrador?"
+                                              data-confirmar-icono="warning"
+                                              data-confirmar-boton="Sí, eliminar"
+                                              data-confirmar-color="#cc3333">
+                                            <button type="submit" class="boton-admin boton-admin-peligro">Eliminar</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="vacio">Todavía no hay administradores de sede.</p>
+                    {% endif %}
+                </section>
+            </main>
+
+            <footer class="statusbar">
+                <span>{{ empresa.nombre }}</span>
+                <span>Sesión: {{ session.usuario }}</span>
+            </footer>
+        </div>
+    </div>
+    {{ confirmar_js() }}
+    <script src="{{ url_for('static', filename='js/panel.js') }}" defer></script>
+</body>
+
+</html>

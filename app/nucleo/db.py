@@ -85,6 +85,13 @@ CREATE TABLE IF NOT EXISTS calificaciones (
     UNIQUE (curso_id, estudiante_id)
 );
 
+-- Plazo para que los docentes suban o cambien notas de un periodo (fechas AAAA-MM-DD; vacío = sin límite)
+CREATE TABLE IF NOT EXISTS plazos_notas (
+    periodo TEXT PRIMARY KEY,
+    abre TEXT,
+    cierra TEXT
+);
+
 -- Criterios de evaluación de un curso (por ejemplo, Parcial 30 %). Deben sumar 100 %
 CREATE TABLE IF NOT EXISTS criterios_evaluacion (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -249,26 +256,54 @@ CREATE TABLE IF NOT EXISTS evaluaciones_docente (
 """
 
 
+def _ruta_activa():
+    """La base de la sede de la sesión; sin sesión de sede, la base principal."""
+    from flask import has_request_context, session
+    from nucleo.sedes import ruta_sede
+    if has_request_context() and session.get('sede_archivo'):
+        return ruta_sede(session['sede_archivo'])
+    return RUTA_DB
+
+
 def get_db():
-    """Conexión de la petición actual (se cierra al terminar)."""
+    """Conexión de la petición actual (se cierra al terminar). Es la de la sede activa."""
+    ruta = _ruta_activa()
+    if 'db' in g and g.db_ruta != ruta:
+        _cerrar_db()
     if 'db' not in g:
-        os.makedirs(os.path.dirname(RUTA_DB), exist_ok=True)
-        conexion = sqlite3.connect(RUTA_DB)
+        os.makedirs(os.path.dirname(ruta), exist_ok=True)
+        conexion = sqlite3.connect(ruta)
         conexion.row_factory = sqlite3.Row
         conexion.execute('PRAGMA foreign_keys = ON')
         g.db = conexion
+        g.db_ruta = ruta
     return g.db
 
 
 def _cerrar_db(exc=None):
     conexion = g.pop('db', None)
+    g.pop('db_ruta', None)
     if conexion is not None:
+        conexion.close()
+
+
+def crear_base(ruta):
+    """Crea una base nueva con todas las tablas (la usa cada sede nueva)."""
+    conexion = sqlite3.connect(ruta)
+    conexion.row_factory = sqlite3.Row
+    try:
+        conexion.executescript(ESQUEMA)
+        _migrar(conexion)
+        conexion.commit()
+    finally:
         conexion.close()
 
 
 def init_app(app):
     """Registra el cierre de conexiones y crea las tablas si no existen."""
+    from nucleo.sedes import iniciar_central
     app.teardown_appcontext(_cerrar_db)
+    iniciar_central()
     with app.app_context():
         conexion = get_db()
         conexion.executescript(ESQUEMA)

@@ -1,0 +1,117 @@
+{% from '_alertas.html' import modal_errores, modal_avisos %}
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ sede.nombre }} | {{ empresa.nombre }}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/consola.css') }}">
+</head>
+
+<body>
+    <div class="panel" id="panel">
+        <aside class="sidebar" id="sidebar" aria-label="Menú del superadministrador">
+            <div class="sidebar-head">
+                <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="30" height="30">
+                <strong>{{ empresa.nombre }}</strong>
+            </div>
+            <nav class="sidebar-nav">
+                <section class="grupo">
+                    <h3 class="grupo-titulo"><i class="fa-solid fa-building"></i>Sedes</h3>
+                    <ul>
+                        <li><a href="{{ url_for('superadmin.inicio') }}"><i class="fa-solid fa-building"></i>Sedes y administradores</a></li>
+                    </ul>
+                </section>
+            </nav>
+            <div class="sidebar-foot">
+                <strong>SUPERADMIN</strong>
+                <span>v1.0</span>
+            </div>
+        </aside>
+
+        <div class="main">
+            <header class="topbar">
+                <span class="topbar-title">Sede · {{ sede.nombre }}</span>
+                <div class="topbar-usuario">
+                    <span class="correo">{{ session.usuario }}</span>
+                    <a href="{{ url_for('autenticar.logout') }}">CERRAR SESIÓN</a>
+                </div>
+            </header>
+
+            <main class="content">
+                {% with mensajes = get_flashed_messages(with_categories=true) %}
+                {{ modal_errores(mensajes) }}
+                {{ modal_avisos(mensajes) }}
+                {% endwith %}
+
+                <p><a href="{{ url_for('superadmin.inicio') }}">← Volver a las sedes</a></p>
+                <h1>{{ sede.nombre }}</h1>
+                <p class="ayuda" style="margin:0 0 14px;">Vista de solo lectura. Para cambiar datos, ingrese con el administrador de esta sede.</p>
+
+                <nav style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+                    {% set pestanas = [('resumen', 'Resumen'), ('estudiantes', 'Estudiantes'), ('docentes', 'Docentes'), ('cursos', 'Cursos'), ('aspirantes', 'Aspirantes')] %}
+                    {% for clave, etiqueta in pestanas %}
+                    <a href="{{ url_for('superadmin.ver_sede', sede_id=sede.id, seccion=clave) }}"
+                       class="boton-admin {% if seccion == clave %}boton-admin-primario{% endif %}">{{ etiqueta }}</a>
+                    {% endfor %}
+                </nav>
+
+                {% if seccion == 'resumen' %}
+                <section class="bloque-admin">
+                    <h2>Resumen de la sede</h2>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:12px; margin-bottom:18px;">
+                        {% for titulo, total in conteos %}
+                        <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+                            <div class="contador">{{ titulo }}</div>
+                            <div style="font-size:24px; font-weight:700;">{{ total }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <h3 style="margin:0 0 8px;">Administradores de la sede</h3>
+                    {% if administradores %}
+                    <ul style="margin:0; padding-left:18px;">
+                        {% for admin in administradores %}<li>{{ admin.correo }}</li>{% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="vacio">Esta sede todavía no tiene administrador.</p>
+                    {% endif %}
+                </section>
+                {% else %}
+                <section class="bloque-admin">
+                    <h2>{{ titulo }} <span class="contador">({{ filas|length }})</span></h2>
+                    {% if filas %}
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead>
+                                <tr>{% for encabezado in encabezados %}<th scope="col">{{ encabezado }}</th>{% endfor %}</tr>
+                            </thead>
+                            <tbody>
+                                {% for fila in filas %}
+                                <tr>{% for valor in fila %}<td>{{ '—' if valor is none or valor == '' else valor }}</td>{% endfor %}</tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="vacio">No hay registros en esta sección.</p>
+                    {% endif %}
+                </section>
+                {% endif %}
+            </main>
+
+            <footer class="statusbar">
+                <span>{{ empresa.nombre }}</span>
+                <span>Sesión: {{ session.usuario }}</span>
+            </footer>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/panel.js') }}" defer></script>
+</body>
+
+</html>

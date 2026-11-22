@@ -4,7 +4,7 @@ import os
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 
-from nucleo.db import get_db
+from nucleo.sedes import RUTA_CENTRAL, conectar, listar_sedes, ruta_sede
 from nucleo.seguridad import destino_por_rol
 
 
@@ -23,25 +23,55 @@ def _cuenta_administrador(correo, contrasena):
             and hmac.compare_digest(contrasena.encode(), clave_ok.encode()))
 
 
+def _autenticar_en_sede(ruta, correo, contrasena):
+    """Busca al usuario en la base de una sede. Devuelve (rol, id_de_la_persona) o (None, None)."""
+    conexion = conectar(ruta)
+    try:
+        fila = conexion.execute(
+            'SELECT rol, docente_id, estudiante_id, personal_id, contrasena_hash FROM usuarios WHERE correo = ?',
+            (correo,)).fetchone()
+        if fila and check_password_hash(fila['contrasena_hash'], contrasena):
+            persona_id = {'docente': fila['docente_id'], 'estudiante': fila['estudiante_id']}.get(
+                fila['rol'], fila['personal_id'])
+            return fila['rol'], persona_id
+
+        # Aspirantes inscritos desde la página pública
+        aspirante = conexion.execute(
+            'SELECT id, contrasena_hash FROM aspirantes WHERE correo = ?', (correo,)).fetchone()
+        if aspirante and check_password_hash(aspirante['contrasena_hash'], contrasena):
+            return 'aspirante', aspirante['id']
+        return None, None
+    finally:
+        conexion.close()
+
+
 def _autenticar(correo, contrasena):
-    """Devuelve (rol, id_de_la_persona) o (None, None) si las credenciales no sirven."""
+    """Devuelve (rol, id_de_la_persona, sede) o (None, None, None).
+
+    sede es (archivo, nombre) de la sede a la que entra la persona. El superadministrador no tiene sede.
+    """
     if _cuenta_administrador(correo, contrasena):
-        return 'admin', None
+        return 'superadmin', None, None
 
-    fila = get_db().execute(
-        'SELECT rol, docente_id, estudiante_id, personal_id, contrasena_hash FROM usuarios WHERE correo = ?',
-        (correo,)).fetchone()
-    if fila and check_password_hash(fila['contrasena_hash'], contrasena):
-        persona_id = {'docente': fila['docente_id'], 'estudiante': fila['estudiante_id']}.get(
-            fila['rol'], fila['personal_id'])
-        return fila['rol'], persona_id
+    central = conectar(RUTA_CENTRAL)
+    try:
+        admin = central.execute(
+            'SELECT a.contrasena_hash, s.archivo, s.nombre FROM admins_sede a '
+            'JOIN sedes s ON s.id = a.sede_id WHERE a.correo = ?', (correo,)).fetchone()
+    finally:
+        central.close()
+    if admin and check_password_hash(admin['contrasena_hash'], contrasena):
+        return 'admin', None, (admin['archivo'], admin['nombre'])
 
-    # Aspirantes inscritos desde la página pública
-    aspirante = get_db().execute(
-        'SELECT id, contrasena_hash, estado FROM aspirantes WHERE correo = ?', (correo,)).fetchone()
-    if aspirante and check_password_hash(aspirante['contrasena_hash'], contrasena):
-        return 'aspirante', aspirante['id']
-    return None, None
+    # El correo identifica la sede: se busca en cada base hasta encontrarlo
+    for sede in listar_sedes():
+        ruta = ruta_sede(sede['archivo'])
+        if not os.path.exists(ruta):
+            continue
+        rol, persona_id = _autenticar_en_sede(ruta, correo, contrasena)
+        if rol:
+            return rol, persona_id, (sede['archivo'], sede['nombre'])
+    return None, None, None
 
 
 @autenticar.route('/ingresar', methods=['GET', 'POST'])
@@ -49,12 +79,14 @@ def login():
     if request.method == 'POST':
         correo = request.form.get('correo', '').strip().lower()
         contrasena = request.form.get('contrasena', '')
-        rol, persona_id = _autenticar(correo, contrasena)
+        rol, persona_id, sede = _autenticar(correo, contrasena)
         if rol:
             session.clear()
             session['usuario'] = correo
             session['rol'] = rol
             session['persona_id'] = persona_id
+            if sede:
+                session['sede_archivo'], session['sede_nombre'] = sede
             return redirect(destino_por_rol(rol))
         flash('Correo o contraseña incorrectos.', 'error')
         return redirect(url_for('autenticar.login'))
