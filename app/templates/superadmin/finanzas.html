@@ -1,0 +1,352 @@
+{% from '_alertas.html' import modal_errores, modal_avisos, confirmar_js %}
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finanzas | {{ empresa.nombre }}</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/consola.css') }}">
+</head>
+
+<body>
+    <div class="panel" id="panel">
+        <aside class="sidebar" id="sidebar" aria-label="Menú del superadministrador">
+            <div class="sidebar-head">
+                <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" width="30" height="30">
+                <strong>{{ empresa.nombre }}</strong>
+            </div>
+            <nav class="sidebar-nav">
+                <section class="grupo">
+                    <h3 class="grupo-titulo"><i class="fa-solid fa-building"></i>Sedes</h3>
+                    <ul>
+                        <li><a href="{{ url_for('superadmin.inicio') }}"><i class="fa-solid fa-building"></i>Sedes y administradores</a></li>
+                        <li><a href="{{ url_for('superadmin.monitoreo') }}"><i class="fa-solid fa-chart-line"></i>Monitoreo general</a></li>
+                        <li><a href="{{ url_for('superadmin.finanzas_monitoreo') }}"><i class="fa-solid fa-coins"></i>Finanzas</a></li>
+                    </ul>
+                </section>
+            </nav>
+            <div class="sidebar-foot">
+                <strong>SUPERADMIN</strong>
+                <span>v1.0</span>
+            </div>
+        </aside>
+
+        <div class="main">
+            <header class="topbar">
+                <span class="topbar-title">Finanzas por sede</span>
+                <div class="topbar-usuario">
+                    <span class="correo">{{ session.usuario }}</span>
+                    <a href="{{ url_for('autenticar.configuracion') }}">CONFIGURACIÓN</a>
+                    <a href="{{ url_for('autenticar.logout') }}">CERRAR SESIÓN</a>
+                </div>
+            </header>
+
+            <main class="content">
+                {% with mensajes = get_flashed_messages(with_categories=true) %}
+                {{ modal_errores(mensajes) }}
+                {{ modal_avisos(mensajes) }}
+                {% endwith %}
+
+                <h1>Finanzas</h1>
+                <p class="ayuda" style="margin:0 0 14px;">Vigile cada movimiento financiero de cada sede. Es de solo lectura: quien registra los movimientos es el usuario financiero.</p>
+                {% include 'finanzas/_indicadores.html' %}
+
+                <section class="bloque-admin">
+                    <h2>Saldos por sede</h2>
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead><tr><th scope="col">Sede</th><th scope="col">Ingresos</th><th scope="col">Egresos</th><th scope="col">Saldo</th><th scope="col">Movimientos</th></tr></thead>
+                            <tbody>
+                                {% for fila in resumenes %}
+                                <tr>
+                                    <td>{{ fila.sede.nombre }} <a href="{{ url_for('superadmin.finanzas_sede', sede_id=fila.sede.id) }}" class="boton-admin" style="height:26px; padding:0 8px; font-size:12px; margin-left:6px;"><i class="fa-solid fa-eye"></i> Ver</a></td>
+                                    <td>{{ fila.resumen.ingresos|pesos(2) }}</td>
+                                    <td>{{ fila.resumen.egresos|pesos(2) }}</td>
+                                    <td>{{ fila.resumen.saldo|pesos(2) }}</td>
+                                    <td>{{ fila.resumen.movimientos }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="bloque-admin">
+                    <h2>Movimientos <span class="contador">({{ movimientos|length }})</span></h2>
+                    <form method="get" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; align-items:flex-end;">
+                        <label class="form-field"><span>Sede</span>
+                            <select name="sede">
+                                <option value="">Todas</option>
+                                {% for sede in sedes %}
+                                <option value="{{ sede.id }}" {% if sede_elegida == sede.id|string %}selected{% endif %}>{{ sede.nombre }}</option>
+                                {% endfor %}
+                            </select></label>
+                        <label class="form-field"><span>Tipo</span>
+                            <select name="tipo">
+                                <option value="">Todos</option>
+                                <option value="ingreso" {% if filtros.tipo == 'ingreso' %}selected{% endif %}>Ingresos</option>
+                                <option value="egreso" {% if filtros.tipo == 'egreso' %}selected{% endif %}>Egresos</option>
+                            </select></label>
+                        <label class="form-field"><span>Desde</span><input type="date" name="desde" value="{{ filtros.desde }}"></label>
+                        <label class="form-field"><span>Hasta</span><input type="date" name="hasta" value="{{ filtros.hasta }}"></label>
+                        <label class="form-field" style="flex-direction:row; align-items:center; gap:6px;">
+                            <input type="checkbox" name="anulados" value="1" {% if filtros.anulados == '1' %}checked{% endif %}> <span>Mostrar anulados</span></label>
+                        <button type="submit" class="boton-admin">Filtrar</button>
+                    </form>
+                    {% if movimientos %}
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Sede</th><th scope="col">Fecha</th><th scope="col">Tipo</th><th scope="col">Cuenta</th>
+                                    <th scope="col">Concepto</th><th scope="col">Referencia</th><th scope="col">Monto</th>
+                                    <th scope="col">Registró</th><th scope="col">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in movimientos %}
+                                {% set m = item.m %}
+                                <tr style="{% if m.anulado %}opacity:.55;{% endif %}">
+                                    <td>{{ item.sede }}</td>
+                                    <td>{{ m.fecha }}</td>
+                                    <td>{{ 'Ingreso' if m.tipo == 'ingreso' else 'Egreso' }}</td>
+                                    <td>{{ m.cuenta }}</td>
+                                    <td>{{ m.concepto }}</td>
+                                    <td>{{ m.referencia or '—' }}</td>
+                                    <td>{{ m.monto|pesos(2) }}</td>
+                                    <td>{{ m.registrado_por }}</td>
+                                    <td>{% if m.anulado %}Anulado por {{ m.anulado_por }}: {{ m.motivo_anulacion }}{% else %}Vigente{% endif %}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="vacio">No hay movimientos con estos filtros.</p>
+                    {% endif %}
+                </section>
+
+                <section class="bloque-admin">
+                    <h2>Bajas de inventario <span class="contador">({{ bajas|length }})</span></h2>
+                    {% if bajas %}
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead><tr><th scope="col">Sede</th><th scope="col">Fecha</th><th scope="col">Artículo</th>
+                                <th scope="col">Cantidad</th><th scope="col">Costo</th><th scope="col">Motivo</th><th scope="col">Registró</th></tr></thead>
+                            <tbody>
+                                {% for item in bajas %}
+                                {% set b = item.b %}
+                                <tr>
+                                    <td>{{ item.sede }}</td><td>{{ b.fecha }}</td><td>{{ b.codigo }} · {{ b.nombre }}</td>
+                                    <td>{{ '%g'|format(b.cantidad|float) }}</td><td>{{ b.costo_total|pesos(2) }}</td>
+                                    <td>{{ b.motivo }}</td><td>{{ b.registrado_por }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="vacio">No hay bajas registradas.</p>
+                    {% endif %}
+                </section>
+
+                <section class="bloque-admin">
+                    <h2>Usuarios financieros <span class="contador">({{ usuarios|length }})</span>
+                        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-nuevo-financiero" style="margin-left:auto;"><i class="fa-solid fa-user-plus"></i> Nuevo usuario</button>
+                    </h2>
+                    <p class="ayuda" style="margin:14px 18px 10px;">Cada persona financiera trabaja solo en la sede que se le asigna. Quitar un usuario le retira el acceso, pero sus movimientos se conservan.</p>
+                    {% if usuarios %}
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead><tr><th scope="col">Nombre</th><th scope="col">Correo</th><th scope="col">Sede</th><th scope="col">Creado</th><th scope="col">Estado</th><th scope="col" class="col-acciones">Acciones</th></tr></thead>
+                            <tbody>
+                                {% for usuario in usuarios %}
+                                <tr>
+                                    <td>{{ usuario.nombre }}</td>
+                                    <td>{{ usuario.correo }}</td>
+                                    <td>{{ usuario.sede or 'Sin sede (no puede ingresar)' }}</td>
+                                    <td>{{ usuario.creado_en }}</td>
+                                    <td>{{ 'Bloqueado' if usuario.bloqueado else 'Activo' }}</td>
+                                    <td class="col-acciones">
+                                        <button type="button" class="boton-admin" data-abrir="ventana-editar-{{ usuario.id }}" style="margin-right:4px;"><i class="fa-solid fa-pen"></i> Editar</button>
+                                        <form method="post" action="{{ url_for('superadmin.cambiar_bloqueo_usuario_financiero', usuario_id=usuario.id) }}" style="display:inline;"
+                                              data-confirmar="{{ 'El usuario no podrá ingresar y su sesión abierta quedará deshabilitada.' if not usuario.bloqueado else 'El usuario volverá a poder ingresar.' }}"
+                                              data-confirmar-titulo="{{ '¿Bloquear este usuario?' if not usuario.bloqueado else '¿Desbloquear este usuario?' }}"
+                                              data-confirmar-icono="warning"
+                                              data-confirmar-boton="{{ 'Sí, bloquear' if not usuario.bloqueado else 'Sí, desbloquear' }}"
+                                              data-confirmar-color="#cc3333">
+                                            <button type="submit" class="boton-admin">{{ 'Desbloquear' if usuario.bloqueado else 'Bloquear' }}</button>
+                                        </form>
+                                        <form method="post" action="{{ url_for('superadmin.eliminar_usuario_financiero', usuario_id=usuario.id) }}" style="display:inline;"
+                                              data-confirmar="La persona perderá el acceso al perfil financiero. Sus movimientos se conservan."
+                                              data-confirmar-titulo="¿Quitar este usuario financiero?"
+                                              data-confirmar-icono="warning"
+                                              data-confirmar-boton="Sí, quitar"
+                                              data-confirmar-color="#cc3333">
+                                            <button type="submit" class="boton-admin boton-admin-peligro">Quitar</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="vacio">Todavía no hay usuarios financieros.</p>
+                    {% endif %}
+                </section>
+
+                <section class="bloque-admin">
+                    <h2>Administradoras financieras <span class="contador">({{ administradoras|length }})</span>
+                        <button type="button" class="boton-admin boton-admin-primario" data-abrir="ventana-nueva-administradora" style="margin-left:auto;"><i class="fa-solid fa-user-plus"></i> Nueva administradora</button>
+                    </h2>
+                    <p class="ayuda" style="margin:14px 18px 10px;">Ven las cuentas de los financieros y las finanzas de todas las sedes, solo en lectura. Todo lo que hacen queda en la bitácora.</p>
+                    {% if administradoras %}
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead><tr><th scope="col">Nombre</th><th scope="col">Correo</th><th scope="col">Estado</th><th scope="col" class="col-acciones">Acciones</th></tr></thead>
+                            <tbody>
+                                {% for admin in administradoras %}
+                                <tr>
+                                    <td>{{ admin.nombre }}</td>
+                                    <td>{{ admin.correo }}</td>
+                                    <td>{{ 'Bloqueada' if admin.bloqueado else 'Activa' }}</td>
+                                    <td class="col-acciones">
+                                        <form method="post" action="{{ url_for('superadmin.bloqueo_administradora_financiera', admin_id=admin.id) }}" style="display:inline;"
+                                              data-confirmar="{{ 'La administradora no podrá ingresar y su sesión abierta quedará deshabilitada.' if not admin.bloqueado else 'La administradora volverá a poder ingresar.' }}"
+                                              data-confirmar-titulo="{{ '¿Bloquear a esta administradora?' if not admin.bloqueado else '¿Desbloquear a esta administradora?' }}"
+                                              data-confirmar-icono="warning"
+                                              data-confirmar-boton="{{ 'Sí, bloquear' if not admin.bloqueado else 'Sí, desbloquear' }}"
+                                              data-confirmar-color="#cc3333">
+                                            <button type="submit" class="boton-admin">{{ 'Desbloquear' if admin.bloqueado else 'Bloquear' }}</button>
+                                        </form>
+                                        <form method="post" action="{{ url_for('superadmin.eliminar_administradora_financiera_ruta', admin_id=admin.id) }}" style="display:inline;"
+                                              data-confirmar="La administradora perderá el acceso. Su historial queda en la bitácora."
+                                              data-confirmar-titulo="¿Quitar a esta administradora?"
+                                              data-confirmar-icono="warning"
+                                              data-confirmar-boton="Sí, quitar"
+                                              data-confirmar-color="#cc3333">
+                                            <button type="submit" class="boton-admin boton-admin-peligro">Quitar</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="vacio">Todavía no hay administradoras financieras.</p>
+                    {% endif %}
+                </section>
+
+                <section class="bloque-admin">
+                    <h2>Bitácora de accesos <span class="contador">(últimos {{ bitacora|length }})</span></h2>
+                    <p class="ayuda" style="margin:14px 18px 10px;">Altas, bloqueos, desbloqueos y bajas de los accesos financieros, con quién lo hizo y cuándo.</p>
+                    {% if bitacora %}
+                    <div class="tabla-contenedor">
+                        <table class="tabla-admin">
+                            <thead><tr><th scope="col">Fecha</th><th scope="col">Quién</th><th scope="col">Acción</th><th scope="col">Detalle</th></tr></thead>
+                            <tbody>
+                                {% for entrada in bitacora %}
+                                <tr>
+                                    <td>{{ entrada.fecha }}</td><td>{{ entrada.usuario }}</td><td>{{ entrada.accion }}</td><td>{{ entrada.detalle }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="vacio">Todavía no hay registros.</p>
+                    {% endif %}
+                </section>
+            </main>
+
+            <dialog id="ventana-nuevo-financiero" class="dialog" aria-labelledby="titulo-nuevo-financiero">
+                <form method="post" action="{{ url_for('superadmin.crear_usuario_financiero') }}">
+                    <div class="dialog-head">
+                        <h2 id="titulo-nuevo-financiero"><i class="fa-solid fa-user-plus"></i>Nuevo usuario financiero</h2>
+                        <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="dialog-body">
+                        <label class="form-field"><span>Nombre</span><input type="text" name="nombre" required></label>
+                        <label class="form-field"><span>Correo</span><input type="email" name="correo" required></label>
+                        <label class="form-field"><span>Sede</span>
+                            <select name="sede_id" required>
+                                <option value="">— Seleccione —</option>
+                                {% for sede in sedes %}<option value="{{ sede.id }}">{{ sede.nombre }}</option>{% endfor %}
+                            </select></label>
+                        <label class="form-field"><span>Contraseña inicial</span>
+                            <input type="password" name="contrasena" minlength="6" required autocomplete="new-password"></label>
+                    </div>
+                    <div class="dialog-foot">
+                        <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
+                        <button type="submit" class="boton-admin boton-admin-primario">Guardar usuario</button>
+                    </div>
+                </form>
+            </dialog>
+
+            <dialog id="ventana-nueva-administradora" class="dialog" aria-labelledby="titulo-nueva-administradora">
+                <form method="post" action="{{ url_for('superadmin.crear_administradora_financiera_ruta') }}">
+                    <div class="dialog-head">
+                        <h2 id="titulo-nueva-administradora"><i class="fa-solid fa-user-plus"></i>Nueva administradora financiera</h2>
+                        <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="dialog-body">
+                        <label class="form-field"><span>Nombre</span><input type="text" name="nombre" required></label>
+                        <label class="form-field"><span>Correo</span><input type="email" name="correo" required></label>
+                        <label class="form-field completo"><span>Contraseña inicial</span>
+                            <input type="password" name="contrasena" minlength="6" required autocomplete="new-password"></label>
+                    </div>
+                    <div class="dialog-foot">
+                        <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
+                        <button type="submit" class="boton-admin boton-admin-primario">Guardar administradora</button>
+                    </div>
+                </form>
+            </dialog>
+
+            {% for usuario in usuarios %}
+            <dialog id="ventana-editar-{{ usuario.id }}" class="dialog" aria-labelledby="titulo-editar-{{ usuario.id }}">
+                <form method="post" action="{{ url_for('superadmin.editar_usuario_financiero', usuario_id=usuario.id) }}">
+                    <div class="dialog-head">
+                        <h2 id="titulo-editar-{{ usuario.id }}"><i class="fa-solid fa-pen"></i>Editar acceso financiero</h2>
+                        <button type="button" class="dialog-cerrar" data-cerrar aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="dialog-body">
+                        <div class="form-field completo"><span>Nombre</span>
+                            <input type="text" name="nombre" value="{{ usuario.nombre }}" required></div>
+                        <div class="form-field completo"><span>Correo</span>
+                            <input type="email" name="correo" value="{{ usuario.correo }}" required></div>
+                        <div class="form-field completo"><span>Sede</span>
+                            <select name="sede_id" required>
+                                {% for sede in sedes %}
+                                <option value="{{ sede.id }}" {% if sede.nombre == usuario.sede %}selected{% endif %}>{{ sede.nombre }}</option>
+                                {% endfor %}
+                            </select></div>
+                        <div class="form-field completo"><span>Nueva contraseña (déjela vacía para no cambiarla)</span>
+                            <input type="password" name="contrasena" minlength="6" autocomplete="new-password"></div>
+                    </div>
+                    <div class="dialog-foot">
+                        <button type="button" class="boton-admin" data-cerrar>Cancelar</button>
+                        <button type="submit" class="boton-admin boton-admin-primario">Guardar cambios</button>
+                    </div>
+                </form>
+            </dialog>
+            {% endfor %}
+
+            <footer class="statusbar">
+                <span>{{ empresa.nombre }}</span>
+                <span>Sesión: {{ session.usuario }}</span>
+            </footer>
+        </div>
+    </div>
+    {{ confirmar_js() }}
+    <script src="{{ url_for('static', filename='js/panel.js') }}" defer></script>
+</body>
+
+</html>

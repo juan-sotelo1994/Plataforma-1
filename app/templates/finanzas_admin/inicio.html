@@ -1,0 +1,52 @@
+{% extends 'finanzas_admin/base.html' %}
+
+{% block content %}
+<h1>Administración financiera</h1>
+<p class="ayuda" style="margin:0 0 14px;">Vista de solo lectura de todas las sedes. Cada consulta que haga queda registrada para auditoría.</p>
+{% include 'finanzas/_indicadores.html' %}
+
+<section class="bloque-admin">
+    <h2>Sedes <span class="contador">({{ saldos|length }})</span></h2>
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead><tr><th scope="col">Sede</th><th scope="col">Ingresos</th><th scope="col">Egresos</th><th scope="col">Saldo</th><th scope="col">Movimientos</th><th scope="col" class="col-acciones">Ver</th></tr></thead>
+            <tbody>
+                {% for fila in saldos %}
+                <tr>
+                    <td>{{ fila.sede.nombre }}</td>
+                    <td>{{ fila.resumen.ingresos|pesos(2) }}</td>
+                    <td>{{ fila.resumen.egresos|pesos(2) }}</td>
+                    <td>{{ fila.resumen.saldo|pesos(2) }}</td>
+                    <td>{{ fila.resumen.movimientos }}</td>
+                    <td class="col-acciones"><a href="{{ url_for('finanzas_admin.sede', sede_id=fila.sede.id) }}" class="boton-admin" style="height:30px; padding:0 10px; font-size:13px;"><i class="fa-solid fa-eye"></i> Ver finanzas</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="bloque-admin">
+    <h2>Cuentas de financieros de todas las sedes <span class="contador">({{ usuarios|length }})</span></h2>
+    {% if usuarios %}
+    <div class="tabla-contenedor">
+        <table class="tabla-admin">
+            <thead><tr><th scope="col">Nombre</th><th scope="col">Correo</th><th scope="col">Sede</th><th scope="col">Estado</th><th scope="col">Creada</th></tr></thead>
+            <tbody>
+                {% for usuario in usuarios %}
+                <tr>
+                    <td>{{ usuario.nombre }}</td>
+                    <td>{{ usuario.correo }}</td>
+                    <td>{{ usuario.sede or 'Sin sede' }}</td>
+                    <td>{{ 'Bloqueado' if usuario.bloqueado else 'Activo' }}</td>
+                    <td>{{ usuario.creado_en }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="vacio">Todavía no hay cuentas de financieros.</p>
+    {% endif %}
+</section>
+{% endblock %}

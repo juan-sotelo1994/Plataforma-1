@@ -10,6 +10,8 @@ INICIO_POR_ROL = {
     'estudiante': 'dashboard.dash_view',
     'aspirante': 'aspirante.inicio',
     'superadmin': 'superadmin.inicio',
+    'financiero': 'finanzas.inicio',
+    'administradora_financiera': 'finanzas_admin.inicio',
     'administrativo': 'personal.inicio',
     'auxiliar': 'personal.inicio',
 }

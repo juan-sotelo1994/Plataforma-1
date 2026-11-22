@@ -10,13 +10,14 @@ Este archivo resume lo que se construyó en la sesión de desarrollo para que se
 | `version8` | `9800e98` | Multi-sede, superadministrador, inscripción en dos pasos, CSV de estudiantes, plazos de notas | No |
 | `version9` | `b4112fe` | Monitoreo general, auditoría por sede, matrícula financiera (recibos) | No |
 | `version10` | `0ef780c` | Notas por periodo con ciclo, promedio parcial, PDF de notas con foto y observaciones, foto del estudiante, filtros, cambio de contraseña | Sí |
-| `version11` | (este commit) | Migración de SQLite a PostgreSQL (sección 3) | No |
+| `version11` | `46d02c7` | Migración de SQLite a PostgreSQL (sección 3) | Sí |
+| `version12` | (este commit) | Finanzas por sede: perfil financiero, administradora financiera, bitácora de accesos, kárdex y bajas (sección 5) | No |
 
 El PR de `version10` no se ha creado: `gh` no está autenticado en el equipo de Windows (`gh auth login`).
 
 ## 2. Cómo pasar al equipo Linux
 
-1. **Código:** `git clone https://github.com/juan-sotelo1994/Plataforma-1.git` y `git checkout version11`.
+1. **Código:** `git clone https://github.com/juan-sotelo1994/Plataforma-1.git` y `git checkout version12`.
 2. **PostgreSQL** en Linux (por ejemplo `sudo apt install postgresql`). Crear el usuario `instituto_app` y la base `instituto` con dueño `instituto_app`.
 3. **Datos:** copiar a mano el respaldo `app/instance/instituto.dump` (no está en GitHub porque contiene datos personales y contraseñas cifradas) y restaurarlo:
    ```bash
@@ -56,6 +57,8 @@ python app.py
 **Superadministrador** (cuenta del `.env`, o la contraseña nueva guardada en la base central)
 - Crea sedes y administradores de sede. Cada sede nueva crea su esquema y sus tablas automáticamente.
 - Vista de solo lectura de cada sede: resumen, estudiantes, docentes, cursos, aspirantes.
+- **Finanzas** (`/superadmin/finanzas`): indicadores de todas las sedes; saldos por sede (con **Ver**, solo lectura: ingresos, egresos, gastos operacionales, bajas y matrícula financiera); movimientos y bajas de todas las sedes con filtros; bitácora de accesos.
+- Crea, edita, bloquea y quita **usuarios financieros** (cada uno asignado a una sede) y **administradoras financieras** (ven todas las sedes en solo lectura). Todo queda en la bitácora de accesos.
 - **Monitoreo general** y, dentro de cada sede, **Horarios**, **Avances** y **Auditoría**.
 - Cambio de contraseña desde **CONFIGURACIÓN**. Después de cambiarla, la nueva reemplaza a la del `.env`.
 
@@ -68,6 +71,13 @@ python app.py
 
 **Docente**
 - Notas por criterio con plazo; observación por estudiante; hoja de vida y documentos de formación.
+
+**Financiero** (portal `/finanzas`, una sola sede asignada)
+- Cuentas de ingreso y de egreso (se crean con siete cuentas iniciales), movimientos con anulación con motivo, kárdex de artículos con costo promedio, bajas que descuentan del kárdex.
+- Un usuario bloqueado no ingresa y su sesión abierta se cierra en su siguiente acción.
+
+**Administradora financiera** (portal `/finanzas-admin`, solo lectura)
+- Ve las cuentas de los financieros de todas las sedes y las finanzas de cada sede. Cada ingreso y cada consulta queda en la bitácora.
 
 **Estudiante** (portal `/panel`)
 - **Actualizar mis datos** y **Mi foto** (JPG o PNG, máximo 2 MB).
@@ -87,7 +97,11 @@ python app.py
 
 ## 7. Pendientes
 
-- Subir `version8` a `version11` a GitHub y crear el PR (requiere `gh auth login`).
+- Subir `version12` a GitHub y crear el PR (requiere `gh auth login`).
+- Finanzas: los pagos de pensión por estudiante no están conectados con los recibos de matrícula; el ingreso se registra a mano.
+- Finanzas: no hay forma de reasignar la sede de un usuario desde el portal financiero; se hace desde el superadministrador con **Editar**.
+- Finanzas: revisión visual en el navegador de las pantallas nuevas (solo se probó con pruebas automáticas).
+- Finanzas: las cuentas `cuentas@gmail.com` y `contadora.ipiales@gmail.com` tienen contraseña inicial de prueba; deben cambiarla desde CONFIGURACIÓN.
 - Revisión visual en el navegador de: inscripción, monitoreo, matrícula financiera, notas del estudiante, configuración, reporte PDF y migración. Solo se probó con pruebas automáticas.
 - Probar de punta a punta el botón **Crear sede** (solo se probó la función que crea el esquema).
 - Decidir si la contraseña del superadministrador se guarda como hash en la base y se quita del `.env`.
@@ -109,7 +123,11 @@ python app.py
 - `nucleo/auditoria.py`: registro de acciones por sede.
 - `nucleo/seguridad.py`: roles y `requiere_rol`.
 - `blueprints/auth.py`: ingreso, cuentas y **CONFIGURACIÓN**.
-- `blueprints/superadmin.py`: sedes, administradores, monitoreo, horarios, avances y auditoría.
+- `blueprints/superadmin.py`: sedes, administradores, monitoreo, horarios, avances, auditoría y finanzas del superadministrador.
+- `blueprints/finanzas.py`: portal del financiero (una sede).
+- `blueprints/finanzas_admin.py`: portal de la administradora financiera (solo lectura).
+- `servicios/finanzas.py`: cuentas, movimientos, kárdex, bajas e indicadores de finanzas.
+- `templates/superadmin/_finanzas_sede_contenido.html`: vista de finanzas por sede, compartida por superadmin y administradora.
 - `blueprints/admin.py`: módulo del administrador de sede.
 - `blueprints/docente.py`: portal del docente.
 - `blueprints/dash.py`: portal del estudiante.

@@ -99,10 +99,14 @@ class Conexion:
         self._pg = psycopg.connect(_url(), row_factory=_fabrica_de_filas)
         self._pg.execute(sql.SQL('SET search_path TO {}').format(sql.Identifier(esquema)))
         if esquema not in _TABLAS_CON_ID:
-            filas = self._pg.execute(
-                "SELECT table_name FROM information_schema.columns "
-                "WHERE table_schema = %s AND column_name = 'id'", (esquema,)).fetchall()
-            _TABLAS_CON_ID[esquema] = {fila[0] for fila in filas}
+            self.recargar_tablas()
+
+    def recargar_tablas(self):
+        """Vuelve a leer qué tablas tienen columna id (después de crear tablas nuevas)."""
+        filas = self._pg.execute(
+            "SELECT table_name FROM information_schema.columns "
+            "WHERE table_schema = %s AND column_name = 'id'", (self.esquema,)).fetchall()
+        _TABLAS_CON_ID[self.esquema] = {fila[0] for fila in filas}
 
     def execute(self, sentencia, parametros=()):
         texto, pide_id = _traducir(sentencia, _TABLAS_CON_ID[self.esquema])

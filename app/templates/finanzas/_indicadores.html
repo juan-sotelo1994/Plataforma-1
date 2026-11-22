@@ -1,0 +1,31 @@
+{# Tarjetas de indicadores de finanzas, de todas las sedes. Recibe: indicadores #}
+<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:12px; margin-bottom:18px;">
+    <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+        <div class="contador" style="min-height:40px; line-height:1.3;">Ingresos</div>
+        <div style="font-size:22px; font-weight:700;">{{ indicadores.ingresos|pesos(2) }}</div>
+    </div>
+    <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+        <div class="contador" style="min-height:40px; line-height:1.3;">Egresos</div>
+        <div style="font-size:22px; font-weight:700;">{{ indicadores.egresos|pesos(2) }}</div>
+    </div>
+    <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+        <div class="contador" style="min-height:40px; line-height:1.3;">Saldo</div>
+        <div style="font-size:22px; font-weight:700;">{{ indicadores.saldo|pesos(2) }}</div>
+    </div>
+    <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+        <div class="contador" style="min-height:40px; line-height:1.3;">Movimientos vigentes</div>
+        <div style="font-size:22px; font-weight:700;">{{ indicadores.movimientos }}</div>
+    </div>
+    <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+        <div class="contador" style="min-height:40px; line-height:1.3;">Anulados</div>
+        <div style="font-size:22px; font-weight:700;">{{ indicadores.anulados }}</div>
+    </div>
+    <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+        <div class="contador" style="min-height:40px; line-height:1.3;">Bajas de inventario</div>
+        <div style="font-size:22px; font-weight:700;">{{ indicadores.bajas }}</div>
+    </div>
+    <div style="padding:14px; border:1px solid #e2e8f0; border-radius:10px; background:#fff;">
+        <div class="contador" style="min-height:40px; line-height:1.3;">Recibos pendientes</div>
+        <div style="font-size:22px; font-weight:700;">{{ indicadores.pendientes }}</div>
+    </div>
+</div>
