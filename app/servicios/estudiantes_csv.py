@@ -6,9 +6,10 @@ El separador es ";" (como lo espera Excel en español); al importar se aceptan "
 import csv
 import datetime
 import io
-import sqlite3
+
 
 from blueprints.aspirante import ESTADOS_CIVILES, SI_NO, TIPOS_SANGRE
+from nucleo.db import IntegrityError
 
 # Columnas del archivo, en el orden en que se exportan. Jornada va por nombre.
 COLUMNAS = [
@@ -144,7 +145,7 @@ def importar(db, contenido):
                            ', '.join('?' for _ in datos) + ')', list(datos.values()))
                 creados += 1
         db.commit()
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         db.rollback()
         return False, ['No se guardó nada: un código de estudiante ya existe con otro documento.'], 0, 0
     return True, [], creados, actualizados

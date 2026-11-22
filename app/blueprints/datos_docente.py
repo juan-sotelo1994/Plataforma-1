@@ -1,8 +1,8 @@
-import sqlite3
+
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
-from nucleo.db import get_db
+from nucleo.db import IntegrityError, get_db
 from nucleo.seguridad import requiere_rol
 from servicios.geografia import DEPARTAMENTOS
 from servicios.hojas import guardar_hoja
@@ -140,7 +140,7 @@ def guardar(paso):
         db.execute('UPDATE docentes SET ' + ', '.join(f'{c} = ?' for c in valores) + ' WHERE id = ?',
                    [valores[c] for c in valores] + [docente_id])
         db.commit()
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         flash('Ese número de documento ya está registrado para otro docente. Los datos no se guardaron.', 'error')
         return redirect(url_for('datos_docente.datos', paso=paso))
 

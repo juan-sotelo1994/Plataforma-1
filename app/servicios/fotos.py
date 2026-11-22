@@ -68,7 +68,7 @@ def guardar_foto(estudiante_id, archivo):
         salida.write(contenido)
     db.execute(
         "INSERT INTO fotos_estudiantes (estudiante_id, nombre_archivo, subido_en) "
-        "VALUES (?, ?, datetime('now', 'localtime')) "
+        "VALUES (?, ?, to_char(localtimestamp, 'YYYY-MM-DD HH24:MI:SS')) "
         "ON CONFLICT (estudiante_id) DO UPDATE SET nombre_archivo = excluded.nombre_archivo, "
         "subido_en = excluded.subido_en",
         (estudiante_id, nombre_en_disco))
