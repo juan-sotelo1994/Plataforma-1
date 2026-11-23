@@ -1,3 +1,4 @@
+import os
 import datetime
 import io
 
@@ -5,9 +6,10 @@ import io
 from flask import Blueprint, flash, redirect, render_template, request, send_file, session, url_for
 
 from nucleo.db import IntegrityError, get_db
+from nucleo.sedes import listar_sedes, mover_aspirante
 from nucleo.seguridad import requiere_rol
 from servicios.comprobante import generar_comprobante
-from servicios.documentos import guardar_documento
+from servicios.documentos import DOCS_DIR, guardar_documento
 from servicios.geografia import DEPARTAMENTOS
 
 
@@ -134,6 +136,8 @@ def _de_academico(requisitos):
 def _campos_faltantes(paso, aspirante):
     faltan = [etiqueta for columna, etiqueta, obligatorio in PASOS[paso]
               if obligatorio and not (aspirante[columna] or '').strip()]
+    if paso == PASO_ASPIRANTE and not aspirante.get('sede_confirmada', 1):
+        faltan.insert(0, 'Sede a la que se inscribe')
     if paso == PASO_PADRES:
         numero = aspirante['numero_hermanos']
         if numero is None or str(numero).strip() == '':
@@ -145,6 +149,11 @@ def _campos_faltantes(paso, aspirante):
 
 def _documentos_faltantes(requisitos):
     return [req['nombre'] for req in requisitos if req['obligatorio'] and req['estado'] is None]
+
+
+def _tiene_documentos(aspirante_id):
+    return get_db().execute('SELECT 1 FROM documentos_aspirante WHERE aspirante_id = ? LIMIT 1',
+                            (aspirante_id,)).fetchone() is not None
 
 
 def _pasos_completos(aspirante_id):
@@ -195,7 +204,8 @@ def inicio():
         sexos=SEXOS, departamentos=DEPARTAMENTOS, grados_anteriores=GRADOS_ANTERIORES,
         estados_civiles=ESTADOS_CIVILES, tipos_sangre=TIPOS_SANGRE, si_no=SI_NO,
         completos=completos, faltan=faltan, PASO_DOCUMENTOS=PASO_DOCUMENTOS, PASO_ACADEMICO=PASO_ACADEMICO,
-        todo_completo=all(completos.values()), descargar=request.args.get('completo') == '1')
+        todo_completo=all(completos.values()), descargar=request.args.get('completo') == '1',
+        sedes=listar_sedes(), sede_actual=session.get('sede_archivo'))
 
 
 @aspirante_bp.route('/comprobante')
@@ -259,8 +269,15 @@ def _guardar_datos(paso):
     db = get_db()
     valores = {columna: request.form.get(columna, '').strip()[:120] for columna, _, _ in PASOS[paso]}
 
+    sede = None
     if paso == PASO_ASPIRANTE:
         mensaje = _validar_aspirante(valores)
+        if mensaje is None:
+            sede = next((s for s in listar_sedes() if str(s['id']) == request.form.get('sede_id', '')), None)
+            if sede is None:
+                mensaje = 'Seleccione la sede a la que se inscribe.'
+            else:
+                valores['sede_confirmada'] = 1
         if mensaje:
             flash(mensaje, 'error')
             return redirect(url_for('aspirante.inicio', paso=paso))
@@ -301,6 +318,22 @@ def _guardar_datos(paso):
     except IntegrityError:
         flash('Ese número de documento ya está registrado en otra inscripción. Los datos no se guardaron.', 'error')
         return redirect(url_for('aspirante.inicio', paso=paso))
+
+    if sede is not None and sede['archivo'] != session.get('sede_archivo'):
+        try:
+            session['persona_id'], descartados = mover_aspirante(session['sede_archivo'], sede['archivo'], aspirante_id)
+        except IntegrityError:
+            flash('Ese número de documento ya tiene una inscripción en la sede escogida. '
+                  'La sede no se cambió.', 'error')
+            return redirect(url_for('aspirante.inicio', paso=paso))
+        session['sede_archivo'], session['sede_nombre'] = sede['archivo'], sede['nombre']
+        for nombre_archivo in descartados:
+            try:
+                os.remove(os.path.join(DOCS_DIR, nombre_archivo))
+            except OSError:
+                pass
+        if _tiene_documentos(session['persona_id']) or descartados:
+            flash(f'Su inscripción pasó a {sede["nombre"]}. Sus documentos quedan pendientes de revisión en esa sede.', 'ok')
 
     flash('Datos guardados.', 'ok')
     if paso == PASO_ASPIRANTE:

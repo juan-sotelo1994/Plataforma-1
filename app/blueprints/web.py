@@ -7,7 +7,9 @@ from werkzeug.security import generate_password_hash
 
 from servicios.circulares_data import por_sede
 from nucleo.db import IntegrityError, get_db
-from nucleo.sedes import correo_en_uso, listar_sedes
+from nucleo.auditoria import registrar
+from nucleo.sedes import conectar_sede, correo_en_uso, listar_sedes
+from servicios import google_oauth
 
 
 web_bp = Blueprint('web', __name__)
@@ -68,15 +70,12 @@ CAMPOS_INSCRIPCION = ['nombres', 'apellidos', 'documento', 'correo']
 
 @web_bp.route('/inscripcion', methods=['GET', 'POST'])
 def inscripcion():
-    sedes = listar_sedes()
     if request.method == 'GET':
-        return render_template('web/inscripcion.html', datos={}, sedes=sedes)
+        return render_template('web/inscripcion.html', datos={})
 
-    # La inscripción se guarda en la base de la sede que escoge el aspirante
-    sede = next((s for s in sedes if str(s['id']) == request.form.get('sede_id', '')), None)
-    if sede is None:
-        flash('Seleccione la sede a la que se inscribe.', 'error')
-        return render_template('web/inscripcion.html', datos={}, sedes=sedes)
+    # La sede se escoge después, en el formulario de inscripción. Mientras tanto la cuenta queda
+    # en la sede principal y, al escoger otra sede, se traslada a la base de esa sede.
+    sede = listar_sedes()[0]
     session['sede_archivo'] = sede['archivo']
     session['sede_nombre'] = sede['nombre']
     db = get_db()
@@ -96,8 +95,8 @@ def inscripcion():
     else:
         try:
             cursor = db.execute(
-                'INSERT INTO aspirantes (nombres, apellidos, documento, correo, programa, contrasena_hash) '
-                'VALUES (?, ?, ?, ?, ?, ?)',
+                'INSERT INTO aspirantes (nombres, apellidos, documento, correo, programa, contrasena_hash, '
+                'sede_confirmada) VALUES (?, ?, ?, ?, ?, ?, 0)',
                 (datos['nombres'], datos['apellidos'], f'PENDIENTE-{uuid.uuid4().hex[:10]}', datos['correo'],
                  '', generate_password_hash(secrets.token_urlsafe(24))))
             db.commit()
@@ -108,7 +107,100 @@ def inscripcion():
         else:
             return redirect(url_for('web.inscripcion_contrasena'))
 
-    return render_template('web/inscripcion.html', datos=datos, sedes=sedes)
+    return render_template('web/inscripcion.html', datos=datos)
+
+
+def _buscar_aspirante(correo):
+    """Busca la inscripción del correo en todas las sedes. Devuelve (sede, fila) o (None, None)."""
+    for sede in listar_sedes():
+        conexion = conectar_sede(sede['archivo'])
+        try:
+            fila = conexion.execute('SELECT id, estado FROM aspirantes WHERE correo = ?', (correo,)).fetchone()
+        finally:
+            conexion.close()
+        if fila:
+            return sede, fila
+    return None, None
+
+
+def _iniciar_sesion_aspirante(correo, aspirante_id, sede):
+    session.clear()
+    session['usuario'] = correo
+    session['rol'] = 'aspirante'
+    session['persona_id'] = aspirante_id
+    session['sede_archivo'], session['sede_nombre'] = sede['archivo'], sede['nombre']
+    conexion = conectar_sede(sede['archivo'])
+    try:
+        registrar(conexion, 'ingreso', 'Inició sesión con Google', usuario=correo)
+        conexion.commit()
+    finally:
+        conexion.close()
+
+
+def _redirect_uri_google():
+    return url_for('web.inscripcion_google_respuesta', _external=True)
+
+
+@web_bp.route('/inscripcion/google')
+def inscripcion_google():
+    """Envía al aspirante a Google para escoger la cuenta con la que se inscribe."""
+    if not google_oauth.configurado():
+        flash('La inscripción con Google no está disponible por ahora. Use el formulario.', 'error')
+        return redirect(url_for('web.inscripcion'))
+    url, estado = google_oauth.url_autorizacion(_redirect_uri_google())
+    session['google_estado'] = estado
+    return redirect(url)
+
+
+@web_bp.route('/inscripcion/google/respuesta')
+def inscripcion_google_respuesta():
+    """Google regresa aquí. Si el correo ya tiene inscripción, entra; si no, se crea la inscripción."""
+    estado = session.pop('google_estado', None)
+    if request.args.get('error') or not request.args.get('code'):
+        flash('No se completó la inscripción con Google.', 'error')
+        return redirect(url_for('web.inscripcion'))
+    if not estado or not secrets.compare_digest(estado, request.args.get('state', '')):
+        flash('La solicitud de Google no es válida. Intente de nuevo.', 'error')
+        return redirect(url_for('web.inscripcion'))
+    try:
+        datos = google_oauth.datos_usuario(request.args['code'], _redirect_uri_google())
+    except google_oauth.ErrorGoogle:
+        flash('No fue posible obtener los datos de su cuenta de Google. Intente de nuevo.', 'error')
+        return redirect(url_for('web.inscripcion'))
+
+    correo = datos['correo']
+    sede, aspirante = _buscar_aspirante(correo)
+    if aspirante:
+        if aspirante['estado'] == 'deshabilitado':
+            flash('Su acceso está deshabilitado. Comuníquese con la institución.', 'error')
+            return redirect(url_for('web.inscripcion'))
+        _iniciar_sesion_aspirante(correo, aspirante['id'], sede)
+        flash('Ya tenía una inscripción con este correo. Continúe donde la dejó.', 'ok')
+        return redirect(url_for('aspirante.inicio'))
+    if correo_en_uso(correo):
+        flash('Ese correo ya tiene una cuenta en la plataforma. Inicie sesión con su contraseña.', 'error')
+        return redirect(url_for('autenticar.login'))
+
+    # Como en el formulario: queda en la sede principal hasta que escoja su sede
+    sede = listar_sedes()[0]
+    conexion = conectar_sede(sede['archivo'])
+    try:
+        cursor = conexion.execute(
+            'INSERT INTO aspirantes (nombres, apellidos, documento, correo, programa, contrasena_hash, '
+            'sede_confirmada) VALUES (?, ?, ?, ?, ?, ?, 0)',
+            (datos['nombres'] or correo.split('@')[0], datos['apellidos'], f'PENDIENTE-{uuid.uuid4().hex[:10]}',
+             correo, '', generate_password_hash(secrets.token_urlsafe(24))))
+        conexion.commit()
+        aspirante_id = cursor.lastrowid
+    except IntegrityError:
+        conexion.rollback()
+        flash('Ya existe una inscripción con ese correo.', 'error')
+        return redirect(url_for('web.inscripcion'))
+    finally:
+        conexion.close()
+    _iniciar_sesion_aspirante(correo, aspirante_id, sede)
+    flash('Inscripción creada con su cuenta de Google. Complete sus datos.', 'ok')
+    return redirect(url_for('aspirante.inicio'))
 
 
 @web_bp.route('/inscripcion/contrasena', methods=['GET', 'POST'])
