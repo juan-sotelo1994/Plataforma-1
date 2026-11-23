@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "plataforma",
+      "runtimeExecutable": "/home/david/Documentos/GitHub/Plataforma-1/app/.venv/bin/python",
+      "runtimeArgs": ["/home/david/Documentos/GitHub/Plataforma-1/app/app.py"],
+      "port": 5712
+    }
+  ]
+}

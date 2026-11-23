@@ -12,7 +12,8 @@ Este archivo resume lo que se construyó en la sesión de desarrollo para que se
 | `version10` | `0ef780c` | Notas por periodo con ciclo, promedio parcial, PDF de notas con foto y observaciones, foto del estudiante, filtros, cambio de contraseña | Sí |
 | `version11` | `46d02c7` | Migración de SQLite a PostgreSQL (sección 3) | Sí |
 | `version12` | `4530a35` | Finanzas por sede: perfil financiero, administradora financiera, bitácora de accesos, kárdex y bajas (sección 5) | Sí |
-| `version13` | (este commit) | Sedes y administradores de sede en ventanas de creación, igual que en finanzas | No |
+| `version13` | `9e7f9b9` | Sedes y administradores de sede en ventanas de creación, igual que en finanzas | Sí (PR #11) |
+| `version14` | (este commit) | Puesta en marcha en Linux (sección 2) y notas para migrar al servidor (sección 9) | No |
 
 El PR de `version10` no se ha creado: `gh` no está autenticado en el equipo de Windows (`gh auth login`).
 
@@ -28,6 +29,23 @@ El PR de `version10` no se ha creado: `gh` no está autenticado en el equipo de 
    - `app/.env`: `SECRET_KEY`, `DEV_CORREO`, `DEV_CONTRASENA` y `DATABASE_URL`. No subirlo a GitHub.
    - `app/uploads/`: documentos, recibos de matrícula, hojas de vida y fotos de estudiantes.
    - Las bases SQLite (`app/instance/*.db`) ya no se usan: son solo respaldo.
+
+### Lo que pasó al montarlo en Linux (equipo de desarrollo, noviembre 2026)
+
+- **Python sin `venv`:** Ubuntu no trae `ensurepip`. Instalar antes `sudo apt install python3.14-venv` (o la versión de Python que tenga el equipo). Si no se puede, se crea con `python3 -m venv --without-pip .venv` y se instala con `pip3 install --prefix .venv --ignore-installed -r requirements.txt`.
+- **El venv vive en `app/.venv`** (ignorado por Git). Ejecutar siempre con `app/.venv/bin/python`, no con `/usr/bin/python3`, o sale `No module named 'flask'`. En VS Code, elegir ese intérprete con "Python: Select Interpreter".
+- **`Falta DATABASE_URL en app/.env`:** el `.env` se copió sin esa línea. Agregarla con el formato de la sección 3.
+- **`la autentificación password falló para el usuario «instituto_app»`:** el PostgreSQL nuevo no trae los usuarios del otro equipo. Hay que crear `instituto_app` (o cambiarle la clave) para que coincida con `DATABASE_URL`:
+  ```bash
+  sudo -u postgres psql -c "ALTER ROLE instituto_app WITH LOGIN PASSWORD 'CLAVE';"
+  ```
+- **Base restaurada con dueño `postgres`:** si el respaldo se restaura como `postgres`, `instituto_app` no es dueño de la base, de los esquemas `central` y `sede_*` ni de sus tablas, y no puede crear sedes nuevas. Hay que pasarle la propiedad (`ALTER DATABASE instituto OWNER TO instituto_app`, y `ALTER SCHEMA` / `ALTER TABLE ... OWNER TO instituto_app` en cada esquema), o restaurar desde el principio con `--role=instituto_app`.
+- **Correo del superadministrador:** no está en ninguna tabla; es `DEV_CORREO` del `.env`. La tabla `central.credencial_superadmin` solo guarda el hash si se cambió la clave desde CONFIGURACIÓN (si está vacía, vale `DEV_CONTRASENA`). Para averiguar qué correo se usaba:
+  ```sql
+  SELECT usuario, count(*) FROM central.auditoria_financieros GROUP BY usuario;
+  ```
+- **El `.env` solo se lee al arrancar:** después de cambiarlo hay que detener la app (Ctrl+C) y lanzarla de nuevo. Si sale `Port 5712 is in use`, ya hay otra copia corriendo: detenerla primero (`ps -ef | grep app.py` y `kill <pid>`).
+- **No abrir el `.env` en dos nanos a la vez:** el que se guarde último pisa los cambios del otro.
 
 ## 3. Base de datos PostgreSQL (version11)
 
@@ -98,7 +116,8 @@ python app.py
 
 ## 7. Pendientes
 
-- Crear el PR de `version12` y, después, el de `version13` (requiere `gh auth login`).
+- Crear el PR de `version14`.
+- Preparar los archivos de despliegue para el servidor (sección 9): gunicorn, servicio de systemd, Nginx y respaldo diario.
 - Finanzas: los pagos de pensión por estudiante no están conectados con los recibos de matrícula; el ingreso se registra a mano.
 - Finanzas: no hay forma de reasignar la sede de un usuario desde el portal financiero; se hace desde el superadministrador con **Editar**.
 - Finanzas: revisión visual en el navegador de las pantallas nuevas (solo se probó con pruebas automáticas).
@@ -140,3 +159,33 @@ python app.py
 - `servicios/estudiantes_csv.py`: exportar e importar estudiantes.
 - `templates/_filtros.html`: barra de filtros común.
 - `templates/_notas_curso.html`: tabla de notas compartida por docente y administrador.
+
+## 9. Migración al servidor (producción)
+
+Es el mismo procedimiento de la sección 2, con estos cambios para que sea seguro y no dependa de una terminal abierta.
+
+### Igual que en desarrollo
+1. `git clone` del repositorio.
+2. PostgreSQL: crear `instituto_app` y la base `instituto` con dueño `instituto_app`, y restaurar `instituto.dump` **directamente con ese usuario** para no tener que corregir dueños después:
+   ```bash
+   pg_restore --no-owner --role=instituto_app -h localhost -U instituto_app -d instituto instituto.dump
+   ```
+3. Instalar `python3-venv` antes de crear `app/.venv`, y luego `pip install -r requirements.txt`.
+4. Crear `app/.env` (`SECRET_KEY`, `DEV_CORREO`, `DEV_CONTRASENA`, `DATABASE_URL`).
+5. Copiar `app/uploads/`.
+
+### Lo que cambia en el servidor
+- **Claves fuertes:** clave larga para `instituto_app` y para el superadministrador, y una `SECRET_KEY` nueva (`python3 -c "import secrets; print(secrets.token_hex(32))"`). Nunca reutilizar las de desarrollo.
+- **`FLASK_DEBUG=0`** en el `.env`. Con debug activo, una página de error permite ejecutar código en el servidor.
+- **No usar `python app.py`** (es el servidor de desarrollo). Usar **gunicorn** (agregarlo a `requirements.txt`), escuchando solo en `127.0.0.1`.
+- **Servicio de systemd** (`plataforma.service`): la app arranca sola con el servidor y se reinicia si se cae. Para aplicar cambios del `.env`: `sudo systemctl restart plataforma`.
+- **Nginx delante de la app** con **HTTPS (Let's Encrypt / certbot)**. Nginx sirve `static/` y reenvía el resto a gunicorn. Ajustar `client_max_body_size 12M` (la app acepta subidas de hasta 12 MB).
+- **Firewall (ufw):** abrir solo SSH, 80 y 443. PostgreSQL (5432) y la app (5712) quedan cerrados al exterior.
+- **Respaldos automáticos:** `pg_dump -Fc` diario de `instituto` y copia de `app/uploads/`, guardados fuera del servidor.
+- **Superadministrador:** después del primer ingreso, cambiar la clave desde **CONFIGURACIÓN** para que quede cifrada en `central.credencial_superadmin` y no dependa del texto claro del `.env`.
+- **Permisos del `.env`:** `chmod 600 app/.env`, con dueño el usuario del sistema que corre la app.
+
+### Datos que hay que tener a mano
+- Sistema operativo del servidor (por ejemplo Ubuntu 24.04) y versión de Python.
+- Dominio y acceso a su DNS (para HTTPS).
+- El respaldo más reciente `instituto.dump` y la carpeta `app/uploads/`.
