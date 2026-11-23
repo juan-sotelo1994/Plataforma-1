@@ -229,6 +229,17 @@
                 <form method="post" action="{{ url_for('aspirante.guardar_paso', paso=paso) }}" class="bloque-admin bloque-formulario">
                     <h2>{{ titulo_paso }}</h2>
                     <div class="formulario-admin" {% if paso == 2 %}style="grid-template-columns: repeat(3, minmax(0, 1fr));"{% endif %}>
+                        {% if paso == 1 %}
+                        <label class="form-field">
+                            <span>Sede a la que se inscribe <small>*</small></span>
+                            <select name="sede_id" required>
+                                <option value="">— Seleccione —</option>
+                                {% for sede in sedes %}
+                                <option value="{{ sede.id }}" {% if aspirante.sede_confirmada and sede.archivo == sede_actual %}selected{% endif %}>{{ sede.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        {% endif %}
                         {% for columna, etiqueta, obligatorio in campos %}
                         <label class="form-field">
                             <span>{{ etiqueta }} {% if obligatorio %}<small>*</small>{% else %}<small>(opcional)</small>{% endif %}</span>

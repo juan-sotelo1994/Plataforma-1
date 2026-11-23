@@ -83,8 +83,64 @@ def iniciar_central():
         pg.execute(COLUMNA_SEDE_SQL)
         pg.execute(TABLA_AUDITORIA_FINANCIEROS_SQL)
         pg.execute(TABLA_ADMIN_FINANCIERAS_SQL)
+        esquemas = [fila[0] for fila in pg.execute('SELECT archivo FROM sedes').fetchall()]
     if not existe:
         crear_base(ESQUEMA_PRINCIPAL, plantilla=None)
+    _agregar_sede_confirmada(esquemas)
+
+
+def _agregar_sede_confirmada(esquemas):
+    """Las sedes que ya existían reciben la columna sede_confirmada (las inscripciones viejas ya tienen sede)."""
+    from nucleo.db import _url
+    with psycopg.connect(_url()) as pg:
+        for esquema in esquemas:
+            existe = pg.execute(
+                "SELECT 1 FROM information_schema.tables WHERE table_schema = %s AND table_name = 'aspirantes'",
+                (esquema,)).fetchone()
+            if existe:
+                pg.execute(sql.SQL('ALTER TABLE {}.aspirantes ADD COLUMN IF NOT EXISTS '
+                                   'sede_confirmada INTEGER NOT NULL DEFAULT 1').format(sql.Identifier(esquema)))
+
+
+def mover_aspirante(origen, destino, aspirante_id):
+    """Traslada la inscripción (con hermanos y documentos) de la base de una sede a la de otra.
+
+    Los requisitos son de cada sede: cada documento pasa al requisito de igual nombre en la sede nueva y
+    queda pendiente de revisión allí. Los documentos sin requisito equivalente se descartan.
+    Devuelve (id nuevo del aspirante, archivos descartados que se deben borrar del disco).
+    Lanza psycopg.IntegrityError si el documento de identidad ya existe en el destino.
+    """
+    from nucleo.db import _url
+    with psycopg.connect(_url()) as pg:
+        columnas = [fila[0] for fila in pg.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'aspirantes' AND column_name <> 'id' "
+            "AND column_name IN (SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = %s AND table_name = 'aspirantes')", (origen, destino)).fetchall()]
+        # La jornada y el estudiante son de la sede de origen: no aplican en la nueva
+        valores = [sql.SQL('NULL') if c in ('jornada_id', 'estudiante_id') else sql.Identifier(c) for c in columnas]
+        nuevo_id = pg.execute(sql.SQL('INSERT INTO {d}.aspirantes ({cols}) SELECT {vals} FROM {o}.aspirantes '
+                                      'WHERE id = %s RETURNING id').format(
+            d=sql.Identifier(destino), o=sql.Identifier(origen),
+            cols=sql.SQL(', ').join(map(sql.Identifier, columnas)), vals=sql.SQL(', ').join(valores)),
+            (aspirante_id,)).fetchone()[0]
+        pg.execute(sql.SQL('INSERT INTO {d}.hermanos (aspirante_id, nombre, edad, parentesco, orden) '
+                           'SELECT %s, nombre, edad, parentesco, orden FROM {o}.hermanos WHERE aspirante_id = %s').format(
+            d=sql.Identifier(destino), o=sql.Identifier(origen)), (nuevo_id, aspirante_id))
+        pg.execute(sql.SQL(
+            'INSERT INTO {d}.documentos_aspirante (aspirante_id, requisito_id, nombre_original, nombre_archivo, subido_en) '
+            'SELECT %s, rd.id, doc.nombre_original, doc.nombre_archivo, doc.subido_en '
+            'FROM {o}.documentos_aspirante doc JOIN {o}.requisitos ro ON ro.id = doc.requisito_id '
+            'JOIN {d}.requisitos rd ON rd.nombre = ro.nombre AND rd.activo = 1 '
+            'WHERE doc.aspirante_id = %s').format(d=sql.Identifier(destino), o=sql.Identifier(origen)),
+            (nuevo_id, aspirante_id))
+        descartados = [fila[0] for fila in pg.execute(sql.SQL(
+            'SELECT nombre_archivo FROM {o}.documentos_aspirante WHERE aspirante_id = %s '
+            'AND nombre_archivo NOT IN (SELECT nombre_archivo FROM {d}.documentos_aspirante WHERE aspirante_id = %s)'
+        ).format(d=sql.Identifier(destino), o=sql.Identifier(origen)), (aspirante_id, nuevo_id)).fetchall()]
+        pg.execute(sql.SQL('DELETE FROM {o}.aspirantes WHERE id = %s').format(o=sql.Identifier(origen)),
+                   (aspirante_id,))
+    return nuevo_id, descartados
 
 
 def listar_sedes():
