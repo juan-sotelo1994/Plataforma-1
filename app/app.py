@@ -43,7 +43,7 @@ app.register_blueprint(finanzas_admin_bp)
 
 # Crea las tablas de la base de datos si todavía no existen
 iniciar_base_de_datos(app)
-kasd
+
 
 if __name__ == '__main__':
     app.run(debug=os.environ.get('FLASK_DEBUG', '1') == '1',
