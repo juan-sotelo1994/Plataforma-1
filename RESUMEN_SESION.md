@@ -133,6 +133,9 @@ python app.py
 - Auditoría: no registra la edición de hojas de vida de docentes ni las consultas.
 - Promedio parcial: es promedio simple; si se quiere ponderado por créditos, cambiar `_promedio`.
 
+- Inicio de sesión con Google (inscripción): las credenciales ya están en `app/.env` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`). Falta agregar en Google Cloud la URI `http://127.0.0.1:5712/inscripcion/google/respuesta` y decidir el estado de la pantalla de consentimiento. Regenerar el secreto (apareció en el chat).
+- App Flutter y API `/api/v1`: planeado, no iniciado. Antes hay que publicar el sistema en un servidor con HTTPS (nginx + gunicorn, `ProxyFix`, `FLASK_DEBUG=0`).
+
 ## 8. Mapa de archivos clave
 
 - `app.py`: arranque y registro de blueprints.
